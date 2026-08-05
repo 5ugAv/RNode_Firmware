@@ -20,6 +20,38 @@
 FIFOBuffer serialFIFO;
 uint8_t serialBuffer[CONFIG_UART_BUFFER_SIZE+1];
 
+#if HAS_GPS
+  #include <TinyGPSPlus.h>
+  TinyGPSPlus gps;                       // UART1 = the UC6580 dual-band GNSS (Heltec Tracker)
+  unsigned long last_gps = 0;
+  #ifndef GPS_INTERVAL
+    #define GPS_INTERVAL 5000            // ms between CMD_GPS pushes when a fix is valid
+  #endif
+  // Push the current fix to the host as CMD_GPS KISS frames (decoded by monitor/rnode_gps.py):
+  // int32 microdegrees, big-endian, KISS-escaped. Additive only — never blocks the radio.
+  void kiss_indicate_location() {
+    int32_t val;
+    // Always emit a light status frame (sats + fix flag) so the host can confirm
+    // the GNSS is alive and wired correctly even before a position fix is achieved.
+    serial_write(FEND); serial_write(CMD_GPS); serial_write(GPS_CMD_STATE);
+    escaped_serial_write((uint8_t)gps.satellites.value());
+    escaped_serial_write(gps.location.isValid() ? 0x01 : 0x00);
+    serial_write(FEND);
+    if (gps.location.isValid()) {
+      serial_write(FEND); serial_write(CMD_GPS); serial_write(GPS_CMD_LAT);
+      val = (int32_t)(gps.location.lat() * 1000000);
+      escaped_serial_write(val>>24); escaped_serial_write(val>>16);
+      escaped_serial_write(val>>8);  escaped_serial_write(val);
+      serial_write(FEND);
+      serial_write(FEND); serial_write(CMD_GPS); serial_write(GPS_CMD_LNG);
+      val = (int32_t)(gps.location.lng() * 1000000);
+      escaped_serial_write(val>>24); escaped_serial_write(val>>16);
+      escaped_serial_write(val>>8);  escaped_serial_write(val);
+      serial_write(FEND);
+    }
+  }
+#endif
+
 FIFOBuffer16 packet_starts;
 uint16_t packet_starts_buf[CONFIG_QUEUE_MAX_LENGTH+1];
 
@@ -129,7 +161,7 @@ void setup() {
     boot_seq();
   #endif
 
-  #if BOARD_MODEL != BOARD_RAK4631 && BOARD_MODEL != BOARD_HELTEC_T114 && BOARD_MODEL != BOARD_TECHO && BOARD_MODEL != BOARD_T3S3 && BOARD_MODEL != BOARD_TBEAM_S_V1 && BOARD_MODEL != BOARD_HELTEC32_V4
+  #if BOARD_MODEL != BOARD_RAK4631 && BOARD_MODEL != BOARD_HELTEC_T114 && BOARD_MODEL != BOARD_TECHO && BOARD_MODEL != BOARD_T3S3 && BOARD_MODEL != BOARD_TBEAM_S_V1 && BOARD_MODEL != BOARD_HELTEC32_V4 && BOARD_MODEL != BOARD_HELTEC_WIRELESS_TRACKER
     // Some boards need to wait until the hardware UART is set up before booting
     // the full firmware. In the case of the RAK4631 and Heltec T114, the line below will wait
     // until a serial connection is actually established with a master. Thus, it
@@ -253,6 +285,15 @@ void setup() {
     display_unblank();
     disp_ready = display_init();
     update_display();
+  #endif
+
+  #if HAS_GPS
+    pinMode(DISPLAY_POWER_PIN, OUTPUT);
+    digitalWrite(DISPLAY_POWER_PIN, HIGH);            // VEXT powers the UC6580 (V1.1 gotcha)
+    Serial1.begin(GPS_BAUD_RATE, SERIAL_8N1, pin_gps_rx, pin_gps_tx);
+    delay(300);
+    Serial1.print("$CFGSYS,h35155\r\n");              // UC6580: dual-band L1+L5, all constellations
+    delay(300);
   #endif
 
   #if MCU_VARIANT == MCU_ESP32 || MCU_VARIANT == MCU_NRF52
@@ -1724,7 +1765,11 @@ void loop() {
   #endif
 
   #if HAS_DISPLAY
-    if (disp_ready && !display_updating) update_display();
+    #if BOARD_MODEL == BOARD_HELTEC_WIRELESS_TRACKER
+      if (disp_ready) tracker_status_burst();
+    #else
+      if (disp_ready && !display_updating) update_display();
+    #endif
   #endif
 
   #if HAS_PMU
@@ -1741,6 +1786,15 @@ void loop() {
 
   #if HAS_INPUT
     input_read();
+  #endif
+
+  #if HAS_GPS
+    while (Serial1.available() > 0) {                 // feed NMEA to TinyGPS++; push fix over KISS
+      if (gps.encode(Serial1.read()) && (millis() - last_gps >= GPS_INTERVAL)) {
+        kiss_indicate_location();
+        last_gps = millis();
+      }
+    }
   #endif
 
   if (memory_low) {

@@ -114,6 +114,11 @@
   #define MODEL_11            0x11 // RAK4631, 433 Mhz
   #define MODEL_12            0x12 // RAK4631, 868 Mhz
 
+
+#define PRODUCT_HELTEC_WIRELESS_TRACKER 0xCB
+#define BOARD_HELTEC_WIRELESS_TRACKER   0x52
+#define MODEL_CB                        0xCB // Heltec Wireless Tracker, 863-928 MHz
+
   #define PRODUCT_HMBRW       0xF0
   #define BOARD_HMBRW         0x32
   #define BOARD_HUZZAH32      0x34
@@ -713,6 +718,60 @@
           const int pin_led_tx = 48;
         #endif
       #endif
+
+
+#elif BOARD_MODEL == BOARD_HELTEC_WIRELESS_TRACKER
+      #define IS_ESP32S3 true
+      #define VALIDATE_FIRMWARE false
+      #define HAS_DISPLAY true
+      #define HAS_BLUETOOTH false
+      #define HAS_BLE true
+      #define HAS_WIFI false
+      #define HAS_PMU false
+      #define HAS_CONSOLE true
+      #define HAS_EEPROM true
+      #define HAS_INPUT true
+      #define HAS_SLEEP true
+      #define PIN_WAKEUP GPIO_NUM_0
+      #define WAKEUP_LEVEL 0
+      #define OCP_TUNED 0x18
+      #define HAS_NP true
+      const int pin_np = 7;
+      #define HAS_SD false
+      const int pin_btn_usr1 = 0;
+      #if defined(EXTERNAL_LEDS)
+        const int pin_led_rx = 13;
+        const int pin_led_tx = 14;
+      #else
+        const int pin_led_rx = 35;
+        const int pin_led_tx = 35;
+      #endif
+      #define MODEM SX1262
+      #define HAS_TCXO true
+      const int pin_tcxo_enable = -1;
+      #define HAS_BUSY true
+      #define DIO2_AS_RF_SWITCH true
+      const int pin_cs = 8;
+      const int pin_busy = 13;
+      const int pin_dio = 14;
+      const int pin_reset = 12;
+      const int pin_mosi = 10;
+      const int pin_miso = 11;
+      const int pin_sclk = 9;
+      const int DISPLAY_DC = 40;
+      const int DISPLAY_CS = 38;
+      const int DISPLAY_MOSI = 42;
+      const int DISPLAY_CLK = 41;
+      const int DISPLAY_RST = 39;
+      const int DISPLAY_BL_PIN = 21;
+      const int DISPLAY_POWER_PIN = 3;
+      // UC6580 dual-band GNSS on UART1. DISPLAY_POWER_PIN (GPIO3 / VEXT) also powers
+      // the GNSS and must be HIGH on V1.1. Pins per the handover (VERIFY on hardware:
+      // if no NMEA arrives, swap rx/tx — the passthrough sketch used the opposite).
+      #define HAS_GPS true
+      #define GPS_BAUD_RATE 115200
+      const int pin_gps_rx = 33;   // MCU RX  <- GNSS TX (GPIO33)  [handover's 34/33 gave no NMEA; swapped]
+      const int pin_gps_tx = 34;   // MCU TX  -> GNSS RX (GPIO34)
 
     #else
       #error An unsupported ESP32 board was selected. Cannot compile RNode firmware.

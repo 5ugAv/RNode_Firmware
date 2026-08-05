@@ -120,11 +120,15 @@ char bt_devname[11];
 
     bool bt_setup_hw() {
       if (!bt_ready) {
+        #if BOARD_MODEL == BOARD_HELTEC_WIRELESS_TRACKER
+          bt_enabled = true;
+        #else
         if (EEPROM.read(eeprom_addr(ADDR_CONF_BT)) == BT_ENABLE_BYTE) {
           bt_enabled = true;
         } else {
           bt_enabled = false;
         }
+        #endif
         if (btStart()) {
           if (esp_bluedroid_init() == ESP_OK) {
             if (esp_bluedroid_enable() == ESP_OK) {
@@ -320,11 +324,15 @@ char bt_devname[11];
     bool bt_setup_hw() {
       // Serial.println("BT setup hw");
       if (!bt_ready) {
+        #if BOARD_MODEL == BOARD_HELTEC_WIRELESS_TRACKER
+          bt_enabled = true;
+        #else
         if (EEPROM.read(eeprom_addr(ADDR_CONF_BT)) == BT_ENABLE_BYTE) {
           bt_enabled = true;
         } else {
           bt_enabled = false;
         }
+        #endif
         if (btStart()) {
           if (esp_bluedroid_init() == ESP_OK) {
             if (esp_bluedroid_enable() == ESP_OK) {

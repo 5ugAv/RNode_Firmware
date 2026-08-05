@@ -108,6 +108,10 @@
   #define SEQ_UNSET       0xFF
 
   #define CMD_ERROR           0x90
+  #define CMD_GPS             0xA0   // GPS-over-KISS (ported from RNode_Firmware_CE)
+  #define GPS_CMD_LAT         0x00
+  #define GPS_CMD_LNG         0x01
+  #define GPS_CMD_STATE       0x02   // [sats, fix_valid] — sent whenever NMEA is parsing
   #define ERROR_INITRADIO     0x01
   #define ERROR_TXFAILED      0x02
   #define ERROR_EEPROM_LOCKED 0x03
