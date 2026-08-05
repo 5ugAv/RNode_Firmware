@@ -16,6 +16,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include "Utilities.h"
+#include "BirthCry.h"
 
 FIFOBuffer serialFIFO;
 uint8_t serialBuffer[CONFIG_UART_BUFFER_SIZE+1];
@@ -1013,6 +1014,13 @@ void serial_callback(uint8_t sbyte) {
     } else if (command == CMD_RESET) {
       if (sbyte == CMD_RESET_BYTE) {
         hard_reset();
+      }
+    } else if (command == 0xB5) {
+      // RNM: birth-cry / identify trigger (FEND 0xB5 0xF8 FEND) — the
+      // medic commands the newborn to SING as the final build step, so
+      // the light show lands WITH the flashed-successfully confirmation.
+      if (sbyte == 0xF8) {
+        birth_cry();
       }
     } else if (command == CMD_ROM_READ) {
       kiss_dump_eeprom();

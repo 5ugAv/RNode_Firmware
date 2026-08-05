@@ -428,7 +428,7 @@ void led_indicate_airtime_lock() {
 void led_indicate_boot_error() {
 	#if HAS_NP == true
 		while(true) {
-			npset(0xFF, 0xFF, 0xFF);
+			npset(0x40, 0x00, 0x00);
 		}
 	#else
 		while (true) {
