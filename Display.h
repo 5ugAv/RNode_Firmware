@@ -1160,11 +1160,22 @@ void draw_disp_area() {
         }
         free(pin_str);
       } else {
+        #if DISPLAY == EINK_BW || DISPLAY == EINK_3C
+          // Do NOT rotate status pages on e-ink. The flip changes the frame
+          // every page_interval (4s), which changes the frame hash, which
+          // forces a panel refresh - so the rotation alone costs ~21,600
+          // refreshes a day and wears the panel to cycle through three
+          // near-identical status plates. Same class of problem as the
+          // scrolling waterfall: a moving element defeats the dirty check.
+          // Hold the informative one (HARDWARE INIT OK / TRX READY).
+          disp_page = 1;
+        #else
         if (millis()-last_page_flip >= page_interval) {
           disp_page = (++disp_page%pages);
           last_page_flip = millis();
           if (not community_fw and disp_page == 0) disp_page = 1;
         }
+        #endif
 
         if (radio_online) {
           if (!display_diagnostics) {
