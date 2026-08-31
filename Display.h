@@ -432,14 +432,9 @@ bool display_init() {
 
       // the SSD1680 uses SPI command to wake and sleep
     
-      displaySPI.begin(); 
-      // force the corrct SPI pins, the radiocpp  _spiModem->begin(); locks them so they cant be changed   
-      NRF_SPIM1->ENABLE = 0; // disable SPIM1 
-      NRF_SPIM1->PSEL.SCK = 22; 
-      NRF_SPIM1->PSEL.MOSI = 20; 
-      NRF_SPIM1->PSEL.MISO = (1u<<31); // disconnect 
-      //NRF_SPIM1->ENABLE = 7; // SPIM_ENABLE_ENABLE_Enabled
-                    // put the 2 lines in the init if it works
+      displaySPI.begin();
+      // No PSEL fixup is needed: the radio is on SPIM0 and the display on
+      // SPIM1, so neither steals the other's pins.
       sendCommand(0x3C); sendData(0x05); // Border waveform: actively drive white
       sendCommand(0x18); sendData(0x80); // Use internal temp sensor
       

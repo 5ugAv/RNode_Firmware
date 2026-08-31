@@ -59,15 +59,16 @@
     SPIClass interface_spi[1] = {
             // SX1262
             SPIClass(
-               
-                // NRF_SPIM1,
-                NRF_SPIM1, 
-                interface_pins[0][3], 
-                interface_pins[0][1], 
+                // The e-ink display owns SPIM1 (Display.h). SPIM3 and SPIM2 are
+                // claimed by the core's global SPI and SPI1. SPIM0 is free, so
+                // the radio gets a peripheral to itself and neither has to
+                // fight the other for the PSEL registers.
+                NRF_SPIM0,
+                interface_pins[0][3],
+                interface_pins[0][1],
                 interface_pins[0][2]
                )
-      }; 
-     //BD
+      };
   #endif
 #endif
 
