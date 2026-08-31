@@ -273,19 +273,31 @@ upload-e22_esp32:
 	python3 ./Release/esptool/esptool.py --port $(or $(port), /dev/ttyUSB0) $(COMMON_ESP_UPLOAD_FLAGS)  ./Release/console_image.bin
 
 upload-heltec_t114:
-	arduino-cli upload -p /dev/ttyACM0 --fqbn Heltec_nRF52:Heltec_nRF52:HT-n5262
+	@test -n "$(port)" || { echo "REFUSING: set port= explicitly, e.g."; \
+	  echo "  make $@ port=$$(readlink -f /dev/serial/by-id/*<iSerial>*)"; \
+	  echo "A bare /dev/ttyACM0 is whatever enumerated first - on a bench with"; \
+	  echo "a permanently-attached RNode that is the WRONG BOARD."; exit 1; }
+	arduino-cli upload -p $(port) --fqbn Heltec_nRF52:Heltec_nRF52:HT-n5262
 	@sleep 1
-	rnodeconf /dev/ttyACM0 --firmware-hash $$(./partition_hashes from_device /dev/ttyACM0)
+	rnodeconf $(port) --firmware-hash $$(./partition_hashes from_device $(port))
 
 upload-heltec_MESHP:
-	arduino-cli upload -p /dev/ttyACM0 --fqbn Heltec_nRF52:Heltec_nRF52:HT-n5262
+	@test -n "$(port)" || { echo "REFUSING: set port= explicitly, e.g."; \
+	  echo "  make $@ port=$$(readlink -f /dev/serial/by-id/*<iSerial>*)"; \
+	  echo "A bare /dev/ttyACM0 is whatever enumerated first - on a bench with"; \
+	  echo "a permanently-attached RNode that is the WRONG BOARD."; exit 1; }
+	arduino-cli upload -p $(port) --fqbn Heltec_nRF52:Heltec_nRF52:HT-n5262
 	@sleep 1
-	rnodeconf /dev/ttyACM0 --firmware-hash $$(./partition_hashes from_device /dev/ttyACM0)
+	rnodeconf $(port) --firmware-hash $$(./partition_hashes from_device $(port))
 
 upload-techo:
-	arduino-cli upload -p /dev/ttyACM0 --fqbn adafruit:nrf52:pca10056
+	@test -n "$(port)" || { echo "REFUSING: set port= explicitly, e.g."; \
+	  echo "  make $@ port=$$(readlink -f /dev/serial/by-id/*<iSerial>*)"; \
+	  echo "A bare /dev/ttyACM0 is whatever enumerated first - on a bench with"; \
+	  echo "a permanently-attached RNode that is the WRONG BOARD."; exit 1; }
+	arduino-cli upload -p $(port) --fqbn adafruit:nrf52:pca10056
 	@sleep 6
-	rnodeconf /dev/ttyACM0 --firmware-hash $$(./partition_hashes from_device /dev/ttyACM0)
+	rnodeconf $(port) --firmware-hash $$(./partition_hashes from_device $(port))
 
 release:  console-site spiffs-image $(shell grep ^release- Makefile | cut -d: -f1)
 
@@ -437,7 +449,7 @@ release-rnode_ng_21: check_bt_buffers
 release-techo:
 	arduino-cli compile --fqbn adafruit:nrf52:pca10056 $(COMMON_BUILD_FLAGS) --build-property "compiler.cpp.extra_flags=\"-DBOARD_MODEL=0x44\""
 	cp build/adafruit.nrf52.pca10056/RNode_Firmware_CE.ino.hex build/rnode_firmware_techo.hex
-	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --application build/rnode_firmware_techo.hex Release/rnode_firmware_techo.zip
+	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --sd-req 0xB6 --application build/rnode_firmware_techo.hex Release/rnode_firmware_techo.zip
 	rm -r build
 
 release-t3s3:
@@ -517,29 +529,29 @@ release-genericesp32: check_bt_buffers
 release-rak4631:
 	arduino-cli compile --fqbn rakwireless:nrf52:WisCoreRAK4631Board $(COMMON_BUILD_FLAGS) --build-property "compiler.cpp.extra_flags=\"-DBOARD_MODEL=0x51\" \"-DBOARD_VARIANT=0x12\""
 	cp build/rakwireless.nrf52.WisCoreRAK4631Board/RNode_Firmware_CE.ino.hex build/rnode_firmware_rak4631.hex
-	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --application build/rnode_firmware_rak4631.hex Release/rnode_firmware_rak4631.zip
+	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --sd-req 0xB6 --application build/rnode_firmware_rak4631.hex Release/rnode_firmware_rak4631.zip
 	rm -r build
 
 release-rak4631_sx1280:
 	arduino-cli compile --fqbn rakwireless:nrf52:WisCoreRAK4631Board $(COMMON_BUILD_FLAGS) --build-property "compiler.cpp.extra_flags=\"-DBOARD_MODEL=0x51\" \"-DBOARD_VARIANT=0x14\""
 	cp build/rakwireless.nrf52.WisCoreRAK4631Board/RNode_Firmware_CE.ino.hex build/rnode_firmware_rak4631_sx1280.hex
-	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --application build/rnode_firmware_rak4631_sx1280.hex Release/rnode_firmware_rak4631_sx1280.zip
+	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --sd-req 0xB6 --application build/rnode_firmware_rak4631_sx1280.hex Release/rnode_firmware_rak4631_sx1280.zip
 	rm -r build
 
 release-opencom-xl:
 	arduino-cli compile --fqbn rakwireless:nrf52:WisCoreRAK4631Board $(COMMON_BUILD_FLAGS) --build-property "compiler.cpp.extra_flags=\"-DBOARD_MODEL=0x52\" \"-DBOARD_VARIANT=0x21\""
 	cp build/rakwireless.nrf52.WisCoreRAK4631Board/RNode_Firmware_CE.ino.hex build/rnode_firmware_opencom_xl.hex
-	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --application build/rnode_firmware_opencom_xl.hex Release/rnode_firmware_opencom_xl.zip
+	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --sd-req 0xB6 --application build/rnode_firmware_opencom_xl.hex Release/rnode_firmware_opencom_xl.zip
 	rm -r build
 
 release-heltec_t114:
 	arduino-cli compile --fqbn Heltec_nRF52:Heltec_nRF52:HT-n5262 $(COMMON_BUILD_FLAGS) --build-property "compiler.cpp.extra_flags=\"-DBOARD_MODEL=0x3C\""
 	cp build/Heltec_nRF52.Heltec_nRF52.HT-n5262/RNode_Firmware_CE.ino.hex build/rnode_firmware_heltec_t114.hex
-	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --application build/rnode_firmware_heltec_t114.hex Release/rnode_firmware_heltec_t114.zip
+	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --sd-req 0xB6 --application build/rnode_firmware_heltec_t114.hex Release/rnode_firmware_heltec_t114.zip
 	rm -r build
 	
 release-heltec_MESHP:
 	arduino-cli compile --fqbn Heltec_nRF52:Heltec_nRF52:HT-n5262 $(COMMON_BUILD_FLAGS) --build-property "compiler.cpp.extra_flags=\"-DBOARD_MODEL=0x46\""
 	cp build/Heltec_nRF52.Heltec_nRF52.HT-n5262/RNode_Firmware_CE.ino.hex build/rnode_firmware_heltec_MESHP.hex
-	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --application build/rnode_firmware_heltec_MESHP.hex Release/rnode_firmware_heltec_MESHP.zip
+	adafruit-nrfutil dfu genpkg --dev-type 0x0052 --sd-req 0xB6 --application build/rnode_firmware_heltec_MESHP.hex Release/rnode_firmware_heltec_MESHP.zip
 	rm -r build
