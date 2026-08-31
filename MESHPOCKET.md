@@ -4,10 +4,15 @@ RNode firmware for the **Heltec MeshPocket** (`HT-298B` / board-ID `HT-n5262`),
 so it can join a [Reticulum](https://reticulum.network) network instead of
 running Meshtastic.
 
-Converted and **proven on air** on 2026-09-01: it transmits, it receives, a
-second radio heard it over LoRa, and it reached a node two hops away. As far as
-we could establish, no one had run RNode firmware on this board before — there
-is no forum post, no Reddit comment, and no GitHub issue describing it working.
+Converted and exercised on air on 2026-09-01. What was measured, on one board:
+four announces transmitted (`txb` 0 → 768, channel load 0 → 20%), 832 bytes
+received, a second radio on a separate Reticulum instance gained a routing entry
+for its destination over LoRa, and a path request answered from a node two hops
+away that was not in the table beforehand. One board, one bench — not a range
+test, and not a claim about yours.
+
+No build **from the published source** has been reported working before this;
+the port's own binaries were flashed successfully by others (see below).
 
 ---
 
@@ -15,9 +20,10 @@ is no forum post, no Reddit comment, and no GitHub issue describing it working.
 
 **This branch is [@TheBeadster](https://github.com/TheBeadster)'s port**, from
 [PR #87](https://github.com/liberatedsystems/RNode_Firmware_CE/pull/87), with
-sixteen commits on top. The board definition, the pin map, the e-ink plumbing,
-the BLE passkey rewrite and the working binaries are all theirs. Two typos
-stopped it building; everything underneath was sound.
+sixteen code commits on top. The board definition, the pin map, the e-ink plumbing,
+the BLE passkey rewrite and the working binaries are all theirs. Two typos stopped it
+building, and the fixes below are mostly in code it inherited rather than code
+it wrote.
 
 The commit history is the credit, and it is intact:
 
@@ -50,15 +56,16 @@ GPL-3.0, like everything it descends from.
 
 ---
 
-## What the sixteen commits change
+## What those commits change
 
 **Two typos that stopped it building.** A missing comma after `12 // pin_reset`
 let C++ fold `12 -1` into `11`, so the array initialised with nine values
-instead of ten: `pin_reset` became 11 and `pin_tcxo_enable` became 0 — the
-32 kHz crystal pin. That is a dead radio — and it accounts for the split in the
-thread, where the author's published binaries worked and the one person who
-built from source got silence. A stray
-`Search` token in the *T114* block was a hard compile error for that board.
+instead of ten. `pin_reset` became 11, so `sx126x::reset()` toggled P0.11
+instead of P0.12 and the radio could not be reset. (`pin_tcxo_enable` defaulted
+to 0, which this variant maps to `0xff` — "no pin" — so that half was inert.)
+It accounts for the split in the thread, where the author's published binaries
+worked and the one person who built from source got silence. A stray `Search` token in the *T114* block
+(absent from upstream CE) broke T114 builds from this branch.
 
 **The radio could never be reset.** This matters more than it sounds. The
 MeshPocket cannot be power-cycled — the 3V3 rail's enable is tied to the battery
@@ -77,31 +84,36 @@ was real — `IMG_SIZE_START` (`bank_0_size` in the bootloader settings page) is
 written by serial DFU but never by UF2 drag-and-drop, so a UF2-flashed board
 hashes the wrong region forever. Rather than disable the check, the image size
 now comes from the linker (`__etext + sizeof(.data) − APPLICATION_START`), which
-is correct however the board was flashed. **Verified on hardware four times: the
-device-computed hash matched `sha256sum` of the flashed `.bin` exactly.**
+is correct however the board was flashed. On this board, across
+successive flashes, the device-computed hash matched `sha256sum` of the flashed
+`.bin` exactly each time — two of those are recorded in the commit history.
 
 **Two SX1262 errata, missing from CE.** 15.4 (IQ polarity, register `0x0736`)
 must be re-applied after every `SetPacketParams` — without it *"LoRa RX
-demodulation fails silently while TX continues to work"*. 15.1 (register
-`0x0889`) improves sensitivity at every bandwidth except 500 kHz, and was an
-empty stub. Both ported from upstream RNode_Firmware.
+demodulation fails silently while TX continues to work"*. 15.1 (`0x0889`, `REG_TX_MODULATION`) is
+*Modulation Quality with 500 kHz LoRa Bandwidth* — a transmit fix, applied at
+every bandwidth except 500 kHz; CE had it as an empty stub. Both ported from
+upstream RNode_Firmware, for parity. Upstream's comment additionally claims RX
+benefits; that is theirs, and unmeasured here.
 
 **TCXO was enabled after calibration**, so the radio was trimmed against the
 internal RC oscillator. Affects every TCXO board in CE.
 
-**P0.21 was driven HIGH at boot.** Meshtastic's variant for this board marks it
-`SX1262_DIO3`, *"connected internally to power the tcxo, do not drive from the
-main CPU"*. It is no longer driven.
+**P0.21 was driven HIGH at boot.** Sources disagree on what that pin is: one
+reading has it unconnected, and Meshtastic's variant marks it `SX1262_DIO3`,
+*"connected internally to power the tcxo, do not drive from the main CPU"*.
+Driving it is wrong under either reading, so it no longer is.
 
 **BLE — four defects in CE's shared nRF52 code, not in the port.** These are
 present in RNode_Firmware_CE v1.75 and affect every nRF52 board it supports. The
 disconnect handler compares an HCI disconnect reason against a GAP *security*
-status, so a disconnect reported as 0 leaves the firmware believing the phone is
-still there. `bt_stop()` sets a flag without stopping anything.
+status, so a disconnect reported as 0 would leave the firmware believing the
+phone is still there (HCI does not define 0 as a disconnect reason, so this is
+a wrong-namespace comparison fixed on inspection, not an observed failure). `bt_stop()` sets a flag without stopping anything.
 `bt_debond_all()` is an empty `{}` on nRF52, making unpair a silent no-op.
 `bt_start()` is not idempotent — advertising records append, so a third call
-appended a truncated name and the board advertised as `RNode`, failing the
-`"RNode "` prefix filter every client uses.
+appended a truncated name and the board advertised as `RNode`, which would fail the
+`"RNode "` prefix filter the Reticulum and Columba clients match on.
 
 The port's own BLE work went the other way. It added a real passkey callback
 that puts the same six digits on the screen and on the wire to `rnodeconf` — and
@@ -114,16 +126,35 @@ it fixed a stack overflow in CE:
 
 Pairing on this board works because of that commit.
 
+The BLE fix that mattered most in this branch was to a bug this branch
+introduced. Stopping Bluetooth cleanly meant clearing
+`restartOnDisconnect`, which is permanent for the rest of the boot — so
+toggling Bluetooth off and on and then walking out of range left the board
+advertising nothing, invisible to its paired phone until rebooted, while the
+display still said Bluetooth was on. `bt_start()` now re-arms it, and only
+reports `ON` if advertising actually started.
+
 **The e-ink repainted every two seconds regardless of content** — 43,200
 refreshes a day. The port was already managing the partial/full balance against
 a real constraint (this panel must finish before the next update), but the gate
-was time rather than content. The frame is now fingerprinted and repaints
-only when the picture actually differs. Three things defeated that fix in turn
+was time rather than content. The frame is now fingerprinted and repaints only
+when the picture actually differs, with a deliberate floor: a full anti-ghost
+refresh every 5 minutes regardless, so roughly 288 a day on a static screen. Three things defeated that fix in turn
 and each had to be found by looking at the panel rather than the code: the
 scrolling waterfall (appends a sample every draw), the status page rotation
-(flips every 4 s), and unquantised values printed beside quantised bars. The
-real full-refresh waveform — the only thing that clears ghosting — had been
-commented out and replaced with a controller re-init.
+(flips every 4 s), and — as a principle rather than a
+sighting, since this layout has no such element — any unquantised value printed
+beside a quantised bar. The real full-refresh call had been
+commented out in favour of a controller re-init; it is restored, though the
+re-init did also produce a full refresh indirectly, and ghosting has not been
+observed either way on a settled panel.
+
+**`pin_disp_miso` was `-1`.** `SPIClass`'s constructor takes a `uint8_t`, so
+that became index 255 into a 48-entry pin map — an out-of-bounds read whose low
+byte was then configured as a real GPIO. It landed on an unused pin by luck,
+and it *moved* when unrelated strings changed. Now 0, which the variant maps to
+"no pin". Also: `HAS_NP true` on a board with no NeoPixel, and a leftover debug
+block that printed the BLE passkey into the main display area every frame.
 
 **The button legend did not match the firmware.** It promised
 "Bluetooth on/off" at 1 s (that sleeps the board) and "Sleep" above 8 s (that
@@ -138,8 +169,23 @@ the refresh and had never once reached the panel.
 
 **Read the hardware notes below first.** Some of them will cost you the board.
 
+**Steps 1–2 confirm the MODULE, not the board.** `HT-n5262` and PID `0x0071`
+are shared by the T114, Mesh Node T1, Mesh Solar and MeshPocket, so a T114
+passes that gate unchanged and would then be flashed with MeshPocket firmware.
+Resolve the target by its own USB serial first and use that path throughout:
+
+```
+ls -l /dev/serial/by-id/ | grep <the board's iSerial>
+PORT=$(readlink -f /dev/serial/by-id/*<iSerial>*-if00)
+```
+
+Everything below uses `$PORT`. Never a bare `/dev/ttyACM0` — on a bench with any
+other board attached, that is whichever enumerated first.
+
 The procedure that worked, in full:
 
+0. **Resolve `$PORT` by iSerial**, as above, and re-resolve it after every step
+   that resets the board — the port number moves.
 1. **Enter DFU.** Double-tap `RST`, or send a 1200-baud touch over the serial
    port (open at 1200 with DTR low, then close). Confirm `239a:0071`.
 2. **Read `INFO_UF2.TXT`** from the mounted drive. **Abort** unless it says both
@@ -196,7 +242,7 @@ only true cold cycle short of opening a glued case.
 **`HT-n5262` does not identify this board.** It is Heltec's *module* name,
 shared by at least the Mesh Node T114, Mesh Node T1, Mesh Solar and the
 MeshPocket. Same product string, same DFU PID `0x0071`, same FQBN. Only the
-per-unit USB serial separates them. Two MeshPockets are reported boot-looping
+per-unit USB serial separates them. Two MeshPockets are reported on Heltec's forum as boot-looping
 after the wrong board's firmware, unrecovered. **Never let a flasher choose
 firmware by board-ID alone.**
 
@@ -235,8 +281,10 @@ to sit on the back of a phone.
 ## For other boards
 
 Several of these fixes are not MeshPocket-specific and are broken for **every**
-nRF52 board on RNode_Firmware_CE: the two SX1262 errata, the TCXO ordering, the
-application-size calculation, and all four BLE defects above. Those are worth taking upstream on their own.
+board on RNode_Firmware_CE. The two SX1262 errata and the TCXO ordering are in
+the shared `sx126x` class, so they reach **every SX1262 board including the
+ESP32 ones**. The application-size calculation and the four BLE defects are
+nRF52-wide. Those are worth taking upstream on their own.
 
 ---
 
