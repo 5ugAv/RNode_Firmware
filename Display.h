@@ -178,6 +178,16 @@ void busyCallback(const void* p) { display_callback(); }
   #define REFRESH_PERIOD  300000  // 5 minutes in ms
   // for screen refresh to stop greying out
   static uint8_t partials_since_full = 0;
+  // Set by display_force_full_refresh() when the screen's meaning changes
+  // (link gained/lost, fault raised/cleared). Those are the moments the user
+  // already expects the panel to change, so the 3.6s flash costs nothing -
+  // and they are far better spaced than a fixed timer.
+  static bool epd_force_full_refresh = false;
+
+  // Call at a state transition - link gained or lost, fault raised or cleared,
+  // entering sleep. Cheap: it only sets a flag; the next scheduled repaint
+  // becomes a full one.
+  void display_force_full_refresh() { epd_force_full_refresh = true; }
   const uint8_t PARTIAL_LIMIT = 100;     // matches GD recommendation
 //BD
 
@@ -1295,26 +1305,22 @@ void update_display(bool blank = false) {
         this helps stop ghosting */
         if (digitalRead(pin_disp_busy) == LOW) {
           if (current-last_epd_refresh >= epd_update_interval) {
-          if ((current-last_epd_full_refresh >= REFRESH_PERIOD)  || partials_since_full >= PARTIAL_LIMIT) {  
-            pinMode(pin_disp_cs, OUTPUT);
-      digitalWrite(pin_disp_cs, HIGH); 
-      display.init(0,      // debug baud — must be >0!
-                true,        // initial full update
-                10,          // reset pulse width (ms)
-                true,        // pull-down RST while idle
-                displaySPI,  
-                SPISettings(4000000, MSBFIRST, SPI_MODE0) 
-                );
-           
-               //          
-             // display.display(false);   // full refresh
-              last_epd_full_refresh = millis(); 
-              partials_since_full = 0; 
-            } else { 
-              if (partials_since_full >= 1) {               display.display(true);
-              };   // partial refresh  give a delay after full refresh
-              partials_since_full++;  
-            }
+          if ((current-last_epd_full_refresh >= REFRESH_PERIOD) || partials_since_full >= PARTIAL_LIMIT
+              || epd_force_full_refresh) {
+            // A FULL refresh is the only thing that clears ghosting: it drives
+            // every pixel through black->white->target. Re-initialising the
+            // controller (which is what stood here) is a hardware reset, not a
+            // waveform flush, so residue survived it - which is exactly the
+            // "areas slowly fade away" the port's author could not solve.
+            // Every other e-ink board in this file already does it this way.
+            display.display(false);
+            last_epd_full_refresh = millis();
+            partials_since_full = 0;
+            epd_force_full_refresh = false;
+          } else {
+            display.display(true);   // partial
+            partials_since_full++;
+          }
           last_epd_refresh = millis();
           epd_blanked = false;
           }
