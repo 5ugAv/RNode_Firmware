@@ -394,11 +394,19 @@ char bt_devname[11];
   void bt_stop() {
     if (bt_state != BT_STATE_OFF) {
       bt_allow_pairing = false;
-      // Setting the flag alone left the device advertising and connectable
-      // while reporting itself off, so "Bluetooth off" was cosmetic.
-      Bluefruit.Advertising.restartOnDisconnect(false);
-      Bluefruit.Advertising.stop();
+      // Order matters. Set OFF first so the disconnect callback below sees
+      // it and does not flip the state back to ON. Then drop the peer -
+      // without this, "Bluetooth off" left a live link still carrying KISS
+      // traffic, and the next bt_start()'s Advertising.start() returned
+      // NRF_ERROR_CONN_COUNT (unchecked) because a connection still held the
+      // slot, leaving the board reporting ON while advertising nothing.
       bt_state = BT_STATE_OFF;
+      Bluefruit.Advertising.restartOnDisconnect(false);
+      for (uint16_t h = 0; h < BLE_MAX_CONNECTION; h++) {
+        BLEConnection *c = Bluefruit.Connection(h);
+        if (c && c->connected()) { c->disconnect(); }
+      }
+      Bluefruit.Advertising.stop();
     }
   }
 
@@ -616,9 +624,12 @@ bool bt_passkey_callback(uint16_t conn_handle, uint8_t const passkey[6], bool ma
       // nothing, invisible to the paired phone until it is rebooted, while
       // the display still says Bluetooth is on.
       Bluefruit.Advertising.restartOnDisconnect(true);
-      Bluefruit.Advertising.start(0);
-
-      bt_state = BT_STATE_ON;
+      // Only report ON if advertising actually started. It can fail
+      // (NRF_ERROR_CONN_COUNT with a connection still held), and claiming
+      // ON while silent is the state that looks like broken hardware.
+      if (Bluefruit.Advertising.start(0)) {
+        bt_state = BT_STATE_ON;
+      }
      }
   }
 

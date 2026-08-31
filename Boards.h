@@ -1425,7 +1425,13 @@
       #define BLE_MODEL "MeshPocket"
 
       #define PIN_T114_ADC_EN 6
-      #define PIN_VEXT_EN 21
+      // P0.21 is NOT a VEXT rail on this board - that was T114 residue.
+      // Sources disagree on what it IS (one reading: unconnected; another:
+      // SX1262_DIO3, which Meshtastic's variant marks "connected internally
+      // to power the tcxo, do not drive from the main CPU"). Driving it is
+      // wrong under either reading and actively harmful under the second,
+      // so it is not defined and not driven. nRF52 GPIO output state also
+      // survives SYSTEMOFF, so a stray HIGH would persist through sleep.
 
       // LED
       #define LED_T114_GREEN 13
@@ -1456,7 +1462,14 @@
       const int pin_disp_busy  = 38;
       const int pin_disp_sck   = 22;
       const int pin_disp_mosi  = 20;           
-      const int pin_disp_miso  = -1;
+      // NOT -1: SPIClass's ctor does g_ADigitalPinMap[uc_pinMISO] with a
+      // uint8_t parameter, so -1 becomes index 255 into a 48-entry array -
+      // an out-of-bounds read of whatever rodata happens to sit there, whose
+      // low byte then gets configured as a real GPIO. It currently lands on
+      // an unused pin by luck, and it MOVED when unrelated strings changed.
+      // g_ADigitalPinMap[0] is 0xff, which is exactly NRFX_SPIM_PIN_NOT_USED,
+      // so index 0 is the correct way to say "no MISO".
+      const int pin_disp_miso  = 0;
      //BD the eink power is connected direct to the 3v3 line it sleeps via a SPI command
       const int pin_disp_en = -1;  
     

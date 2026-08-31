@@ -158,10 +158,11 @@ void setup() {
       digitalWrite(PIN_VEXT_EN, HIGH);
       delay(100);
     #elif BOARD_MODEL == BOARD_HELTEC_MESHP
+      // Deliberately does NOT drive P0.21. See Boards.h: it is not a VEXT
+      // rail on this board, and under one reading it is SX1262_DIO3, which
+      // must not be driven from the MCU. Removing the drive is correct
+      // whichever reading is right.
       delay(200);
-      pinMode(PIN_VEXT_EN, OUTPUT);
-      digitalWrite(PIN_VEXT_EN, HIGH);
-      delay(100);
     #endif
 
 

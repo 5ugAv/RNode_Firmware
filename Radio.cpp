@@ -301,6 +301,13 @@ void sx126x::setModulationParams(uint8_t sf, uint8_t bw, uint8_t cr, int ldro) {
   buf[7] = 0x00;
 
   executeOpcode(OP_MODULATION_PARAMS_6X, buf, 8);
+
+  // SetModulationParams resets register 0x0889, so errata 15.1 has to be
+  // re-applied here, not only from setSignalBandwidth(). CMD_SF and CMD_CR
+  // reach this while the radio is RUNNING - the .ino handlers are not gated
+  // on radio state and MODE_HOST is permanent - so without this the
+  // sensitivity bit is silently lost on any SF or coding-rate change.
+  optimizeModemSensitivity();
 }
 
 void sx126x::setPacketParams(uint32_t preamble, uint8_t headermode, uint8_t length, uint8_t crc) {

@@ -1327,9 +1327,15 @@ void update_display(bool blank = false) {
         // epd_blanked matters: after a blank/un-blank the canvases can hash
         // IDENTICALLY to the frame before the blank, so a pure content check
         // would skip the repaint and leave the panel blank with no way back.
+        // The periodic full refresh must survive the dirty gate. Without the
+        // REFRESH_PERIOD term a static screen never gets its anti-ghost pass,
+        // and - worse - if a refresh is interrupted (GxEPD2 gives up after a
+        // 10s busy timeout) the hash was already recorded as displayed, so
+        // the panel would stay wrong permanently. This lets it self-heal.
         bool epd_dirty = (epd_hash != epd_last_frame_hash)
                       || epd_force_full_refresh
-                      || epd_blanked;
+                      || epd_blanked
+                      || (current - last_epd_full_refresh >= REFRESH_PERIOD);
 
         if (epd_dirty && digitalRead(pin_disp_busy) == LOW) {
           if (current-last_epd_refresh >= epd_update_interval) {
