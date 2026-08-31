@@ -1227,7 +1227,16 @@ void draw_disp_area() {
           if (!display_diagnostics) {
             disp_area.drawBitmap(0, 37, bm_online, disp_area.width(), 27, DISPLAY_WHITE, DISPLAY_BLACK);
           }
-        } else {
+        }
+        #if DISPLAY == EINK_BW || DISPLAY == EINK_3C
+        else if (bt_state != BT_STATE_CONNECTED) {
+          // Idle, and no phone linked: say how to get one. This is the only
+          // moment the instruction is useful, and it is static, so it costs a
+          // single refresh when the state changes rather than one per tick.
+          disp_area.drawBitmap(0, 37, bm_pair_howto, disp_area.width(), 27, DISPLAY_WHITE, DISPLAY_BLACK);
+        }
+        #endif
+        else {
           if (disp_page == 0) {
             if (true || device_signatures_ok()) {
               disp_area.drawBitmap(0, 37, bm_checks, disp_area.width(), 27, DISPLAY_WHITE, DISPLAY_BLACK);
