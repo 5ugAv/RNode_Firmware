@@ -139,7 +139,7 @@ void busyCallback(const void* p) { display_callback(); }
   #define DISP_CUSTOM_ADDR true
   //BD
 #elif BOARD_MODEL == BOARD_HELTEC_MESHP
-  SPIClass displaySPI = SPIClass(NRF_SPIM1, pin_disp_miso, pin_disp_sck, pin_disp_mosi);  
+  SPIClass displaySPI = SPIClass(NRF_SPIM3, pin_disp_miso, pin_disp_sck, pin_disp_mosi);
   #define DISP_W 250
   #define DISP_H 122
   #define DISP_ADDR -1

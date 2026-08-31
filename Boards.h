@@ -1332,7 +1332,7 @@
       #define EEPROM_SIZE 296
       #define EEPROM_OFFSET EEPROM_SIZE-EEPROM_RESERVED
       #define BLE_MANUFACTURER "Heltec"
-      #define BLE_MODEL "MeshPocket"
+      #define BLE_MODEL "T114"
 
       #define PIN_T114_ADC_EN 6
       #define PIN_VEXT_EN 21
@@ -1422,7 +1422,7 @@
       #define EEPROM_SIZE 296
       #define EEPROM_OFFSET EEPROM_SIZE-EEPROM_RESERVED
       #define BLE_MANUFACTURER "Heltec"
-      #define BLE_MODEL "T114"
+      #define BLE_MODEL "MeshPocket"
 
       #define PIN_T114_ADC_EN 6
       #define PIN_VEXT_EN 21

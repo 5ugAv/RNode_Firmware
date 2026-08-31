@@ -59,11 +59,14 @@
     SPIClass interface_spi[1] = {
             // SX1262
             SPIClass(
-                // The e-ink display owns SPIM1 (Display.h). SPIM3 and SPIM2 are
-                // claimed by the core's global SPI and SPI1. SPIM0 is free, so
-                // the radio gets a peripheral to itself and neither has to
-                // fight the other for the PSEL registers.
-                NRF_SPIM0,
+                // The display moves to SPIM3 (Display.h), so the radio keeps
+                // SPIM1 and the two no longer share a control block. SPIM0 is
+                // NOT a valid alternative: nrfx_config.h disables SPIM0 and
+                // SPIM1 ("used as I2C"), so an SPIClass on either keeps
+                // drv_inst_idx 0 and collides with whatever holds m_cb[0] -
+                // and nrfx_spim_init() then early-returns before it ever
+                // writes PSEL, leaving the pins disconnected.
+                NRF_SPIM1,
                 interface_pins[0][3],
                 interface_pins[0][1],
                 interface_pins[0][2]

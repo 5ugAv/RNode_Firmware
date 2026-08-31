@@ -150,21 +150,19 @@ extern uint32_t __data_start__;
 extern uint32_t __data_end__;
 
 uint32_t retrieve_application_size() {
-    uint8_t bytes[4];
-    memcpy(bytes, (const void*)IMG_SIZE_START, 4);
-    uint32_t fw_len = bytes[0] | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24;
-
-    // IMG_SIZE_START is bank_0_size in the bootloader's settings page. Serial
-    // DFU fills it in correctly, but a UF2 drag-and-drop install zeroes the
-    // struct, and a never-written page reads as 0xFFFFFFFF (which would then
-    // overflow the end address). In both cases ask the linker instead, which
-    // is right regardless of how the board was flashed.
-    if (fw_len == 0 || fw_len == 0xFFFFFFFF) {
-        uint32_t data_len = (uint32_t)&__data_end__ - (uint32_t)&__data_start__;
-        fw_len = ((uint32_t)&__etext + data_len) - APPLICATION_START;
-    }
-
-    return fw_len;
+    // Deliberately NOT read from IMG_SIZE_START (bank_0_size in the
+    // bootloader's settings page). Only the serial/BLE DFU path writes that
+    // field - the UF2 path never touches it at all - so on a board that was
+    // serial-DFU'd once and then UF2-flashed it holds the PREVIOUS image's
+    // size: plausible, non-zero, and wrong. Hashing that range yields a
+    // permanent "firmware corrupt" state, which is exactly the failure the
+    // original port worked around by disabling validation entirely.
+    //
+    // The linker knows the size of the image that is actually running,
+    // whatever route it arrived by. __etext is where .data's initialisers
+    // are stored in flash, so __etext + sizeof(.data) is the end of image.
+    uint32_t data_len = (uint32_t)&__data_end__ - (uint32_t)&__data_start__;
+    return ((uint32_t)&__etext + data_len) - APPLICATION_START;
 }
 
 void calculate_region_hash(unsigned long long start, unsigned long long end, uint8_t* return_hash) {

@@ -857,8 +857,18 @@ void sx126x::handleLowDataRate(){
   }
 }
 
+// SX1262 errata 15.1: modulation quality with 500 kHz LoRa bandwidth.
+// Register 0x0889 bit 2 must be CLEARED at 500 kHz and SET at every other
+// bandwidth. Setting it improves receiver sensitivity - and the canonical
+// bandwidth for this network is 125 kHz, so this is on the hot path, not an
+// edge case. Ported from upstream RNode_Firmware sx126x.cpp.
 void sx126x::optimizeModemSensitivity(){
-    // todo: check if there's anything the sx1262 can do here
+  uint8_t reg = readRegister(0x0889);
+  if (getSignalBandwidth() == 500E3) {
+    writeRegister(0x0889, reg & 0xFB); // clear bit 2
+  } else {
+    writeRegister(0x0889, reg | 0x04); // set bit 2
+  }
 }
 
 void sx126x::setSignalBandwidth(uint32_t sbw)
