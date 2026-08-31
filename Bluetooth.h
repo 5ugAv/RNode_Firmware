@@ -391,9 +391,12 @@ char bt_devname[11];
   uint8_t eeprom_read(uint32_t mapped_addr);
 
   void bt_stop() {
-    // Serial.println("BT Stop");
     if (bt_state != BT_STATE_OFF) {
       bt_allow_pairing = false;
+      // Setting the flag alone left the device advertising and connectable
+      // while reporting itself off, so "Bluetooth off" was cosmetic.
+      Bluefruit.Advertising.restartOnDisconnect(false);
+      Bluefruit.Advertising.stop();
       bt_state = BT_STATE_OFF;
     }
   }
@@ -482,10 +485,15 @@ bool bt_passkey_callback(uint16_t conn_handle, uint8_t const passkey[6], bool ma
   }
 
   void bt_disconnect_callback(uint16_t conn_handle, uint8_t reason) {
-    // Serial.println("Disconnect callback");
-    if (reason != BLE_GAP_SEC_STATUS_SUCCESS) {
-        bt_state = BT_STATE_ON;
-    }
+    // `reason` is an HCI disconnect reason (BLE_HCI_*), and it was being
+    // compared against BLE_GAP_SEC_STATUS_SUCCESS - a value from the GAP
+    // SECURITY status enum, which is a different namespace that happens to
+    // be 0. Any reason equal to 0 therefore left bt_state at CONNECTED with
+    // no peer attached, and the main loop kept routing KISS traffic into a
+    // link that was gone. A disconnect is a disconnect: always drop back to
+    // advertising.
+    (void)conn_handle; (void)reason;
+    bt_state = BT_STATE_ON;
   }
 
   void bt_update_passkey() {
@@ -626,7 +634,13 @@ bool bt_passkey_callback(uint16_t conn_handle, uint8_t const passkey[6], bool ma
 
 
 
-  void bt_debond_all() { }
+  void bt_debond_all() {
+    // Was an empty stub, so CMD_BT_UNPAIR silently did nothing on nRF52 and
+    // a stale bond had no in-firmware recovery at all. For a radio that
+    // lives paired to one phone, "unpair and pair again" is the whole
+    // recovery story, so it needs to actually happen.
+    Bluefruit.Periph.clearBonds();
+  }
 
   void update_bt() {
     if (bt_allow_pairing && millis()-bt_pairing_started >= BT_PAIRING_TIMEOUT) {
