@@ -1383,7 +1383,6 @@
               17, // pin_busy
               20, // pin_dio
               25, // pin_reset
-Search
 
               -1, // pin_txen
               -1, // pin_rxen
@@ -1481,7 +1480,7 @@ Search
               41, // pin_miso
               15, // pin_busy
               16, // pin_dio
-              12 // pin_reset
+              12, // pin_reset
               -1, // pin_txen
               -1, // pin_rxen
               -1  // pin_tcxo_enable
