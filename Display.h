@@ -433,8 +433,11 @@ bool display_init() {
       // the SSD1680 uses SPI command to wake and sleep
     
       displaySPI.begin();
-      // No PSEL fixup is needed: the radio is on SPIM0 and the display on
-      // SPIM1, so neither steals the other's pins.
+      // No PSEL fixup is needed: the radio is on SPIM1 and the display on
+      // SPIM3, so neither steals the other's pins.
+      // NOTE: SPIM1 shares silicon with TWIM1 (= the core's Wire1), and
+      // PMU_WIRE_PORT defaults to Wire1 on nRF52. Adding any I2C device to
+      // this board would take the radio's SPI with it.
       sendCommand(0x3C); sendData(0x05); // Border waveform: actively drive white
       sendCommand(0x18); sendData(0x80); // Use internal temp sensor
       

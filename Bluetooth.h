@@ -33,6 +33,7 @@
   BLEDis  bledis;
   BLEBas  blebas;
   bool SerialBT_init = false;
+  bool bt_svc_init = false;
 #endif
 
 #define BT_PAIRING_TIMEOUT 35000
@@ -493,7 +494,10 @@ bool bt_passkey_callback(uint16_t conn_handle, uint8_t const passkey[6], bool ma
     // link that was gone. A disconnect is a disconnect: always drop back to
     // advertising.
     (void)conn_handle; (void)reason;
-    bt_state = BT_STATE_ON;
+    // Do not resurrect a radio that was deliberately switched off: bt_stop()
+    // does not drop an active peer, so its eventual disconnect would land
+    // here and flip the state back to ON while nothing is advertising.
+    if (bt_state != BT_STATE_OFF) { bt_state = BT_STATE_ON; }
   }
 
   void bt_update_passkey() {
@@ -569,9 +573,14 @@ bool bt_passkey_callback(uint16_t conn_handle, uint8_t const passkey[6], bool ma
       Bluefruit.setName(bt_devname);
       bledis.setManufacturer(BLE_MANUFACTURER);
       bledis.setModel(BLE_MODEL);
-      // start device information service
-      bledis.begin();
-      blebas.begin();
+      // These register GATT services and must run once per boot. Calling
+      // them again on a BT off/on cycle adds duplicate Device Information
+      // services until the attribute table runs out.
+      if (!bt_svc_init) {
+        bledis.begin();
+        blebas.begin();
+        bt_svc_init = true;
+      }
 
       // Guard to ensure SerialBT service is not duplicated through BT being power cycled
       if (!SerialBT_init) {
@@ -581,6 +590,14 @@ bool bt_passkey_callback(uint16_t conn_handle, uint8_t const passkey[6], bool ma
           SerialBT.begin();
           SerialBT_init = true;
       }
+
+      // addFlags/addTxPower/addService/addName APPEND. Without clearing,
+      // a second bt_start() duplicates the Flags and TX-power structures and
+      // a third appends a truncated SHORT_LOCAL_NAME "RNode" after the full
+      // ones - and Android keeps the LAST name it parses, so the board would
+      // advertise as "RNode" and fail every client's "RNode " prefix filter.
+      Bluefruit.Advertising.clearData();
+      Bluefruit.ScanResponse.clearData();
 
       Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
       Bluefruit.Advertising.addTxPower();
@@ -592,6 +609,13 @@ bool bt_passkey_callback(uint16_t conn_handle, uint8_t const passkey[6], bool ma
       // Use Scan response for Name
       Bluefruit.ScanResponse.addName();
 
+      // THE critical line. restartOnDisconnect(false) - set by bt_stop() -
+      // is permanent for the rest of the boot: Advertising.start() does not
+      // re-arm it. Without this, a BT off/on cycle followed by any
+      // disconnect (walking out of range) leaves the board advertising
+      // nothing, invisible to the paired phone until it is rebooted, while
+      // the display still says Bluetooth is on.
+      Bluefruit.Advertising.restartOnDisconnect(true);
       Bluefruit.Advertising.start(0);
 
       bt_state = BT_STATE_ON;

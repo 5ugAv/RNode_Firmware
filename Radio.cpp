@@ -428,6 +428,15 @@ int sx126x::begin()
   setModulationParams(_sf, _bw, _cr, _ldro);
   setPacketParams(_preambleLength, _implicitHeaderMode, _payloadLength, _crcMode);
 
+  // Errata 15.1 must be applied HERE, not only from setSignalBandwidth().
+  // begin() opens with reset(), which returns the SX1262 to POR and wipes
+  // register 0x0889; and setSignalBandwidth() is only ever called while the
+  // radio is off (CMD_BANDWIDTH before CMD_RADIO_STATE, and eeprom_conf_load
+  // guarded on !getRadioOnline()). Without this call the sensitivity bit sits
+  // at its POR value for the whole session - the degraded state, at our
+  // canonical 125 kHz.
+  optimizeModemSensitivity();
+
   _radio_online = true;
   return 1;
 }
