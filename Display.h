@@ -985,7 +985,20 @@ void draw_stat_area() {
     draw_quality_bars(28, 56);
     draw_signal_bars(44, 56);
     if (radio_online) {
-      draw_waterfall(27, 4);
+      #if DISPLAY == EINK_BW || DISPLAY == EINK_3C
+        // NOT on e-ink. draw_waterfall() appends a sample and scrolls on
+        // EVERY call, so the frame is different every pass by construction -
+        // which makes the frame-hash dirty check always true and pins the
+        // panel at a refresh every 2s (~43,200/day), wearing it for a
+        // scrolling graph the medium cannot show anyway. A 0.5s partial
+        // refresh cannot render a moving trace; the port's own author said
+        // "don't expect OLED type scrolling of the waterfall".
+        //
+        // The space this frees is where the quantised BUSY/SIG gauges go in
+        // the redesign - values that change on a step, not on a sample.
+      #else
+        draw_waterfall(27, 4);
+      #endif
     }
   }
 }
