@@ -184,6 +184,13 @@ void busyCallback(const void* p) { display_callback(); }
   // and they are far better spaced than a fixed timer.
   static bool epd_force_full_refresh = false;
 
+  // Fingerprint of the last frame actually PUT ON THE PANEL. The two 64x64
+  // canvases are 512 bytes each; if their contents are unchanged there is by
+  // definition nothing new to show, so the refresh is skipped. This is exact
+  // rather than a per-field guess: any change from any source alters the
+  // pixels and therefore the hash.
+  static uint32_t epd_last_frame_hash = 0;
+
   // Call at a state transition - link gained or lost, fault raised or cleared,
   // entering sleep. Cheap: it only sets a flag; the next scheduled repaint
   // becomes a full one.
@@ -262,6 +269,18 @@ int p_as_y = 0;
 
 GFXcanvas1 stat_area(64, 64);
 GFXcanvas1 disp_area(64, 64);
+
+  static uint32_t epd_frame_hash() {
+    // FNV-1a over both canvas buffers.
+    uint32_t h = 2166136261UL;
+    const uint8_t *bufs[2] = { disp_area.getBuffer(), stat_area.getBuffer() };
+    for (uint8_t b = 0; b < 2; b++) {
+      const uint8_t *p = bufs[b];
+      for (uint16_t i = 0; i < (64 * 64) / 8; i++) { h = (h ^ p[i]) * 16777619UL; }
+    }
+    return h;
+  }
+
 
 //BD 
 #if BOARD_MODEL == BOARD_HELTEC_MESHP
@@ -1290,7 +1309,8 @@ void update_display(bool blank = false) {
         #if DISPLAY == EINK_BW || DISPLAY == EINK_3C
         // clear the scren buffer
           display.setFullWindow();
-          display.fillScreen(DISPLAY_BLACK);
+          // fillScreen(BLACK) immediately before fillScreen(WHITE) is a wasted
+          // 4KB memset on every pass - the second overwrites the first.
           display.fillScreen(DISPLAY_WHITE);
            
         #endif
@@ -1303,8 +1323,17 @@ void update_display(bool blank = false) {
         /* Given Mesh pocket seperate display refresh from the other
         Eink because it must wait for the driver to finish before doing any other updates
         this helps stop ghosting */
-        if (digitalRead(pin_disp_busy) == LOW) {
+        uint32_t epd_hash = epd_frame_hash();
+        // epd_blanked matters: after a blank/un-blank the canvases can hash
+        // IDENTICALLY to the frame before the blank, so a pure content check
+        // would skip the repaint and leave the panel blank with no way back.
+        bool epd_dirty = (epd_hash != epd_last_frame_hash)
+                      || epd_force_full_refresh
+                      || epd_blanked;
+
+        if (epd_dirty && digitalRead(pin_disp_busy) == LOW) {
           if (current-last_epd_refresh >= epd_update_interval) {
+          epd_last_frame_hash = epd_hash;
           if ((current-last_epd_full_refresh >= REFRESH_PERIOD) || partials_since_full >= PARTIAL_LIMIT
               || epd_force_full_refresh) {
             // A FULL refresh is the only thing that clears ghosting: it drives
