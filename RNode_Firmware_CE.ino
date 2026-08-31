@@ -1770,7 +1770,10 @@ void sleep_now() {
           // point of a sleep screen you can identify without waking.
           display.setFont(SMALL_FONT);
           display.setTextSize(2);
-          display.setCursor(5, 100);
+          // Org_01 positions the BASELINE, not the top, so a size-2 glyph
+          // grows UPWARD ~14px from the cursor. At y=100 that ran back into
+          // the "hold 5s" legend line at y=88. y=116 clears it.
+          display.setCursor(5, 116);
           display.printf("%02X%02X", bt_dh[14], bt_dh[15]);   // last two bytes of the BLE MAC
 
           display.display(false);
