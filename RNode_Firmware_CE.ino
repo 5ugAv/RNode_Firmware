@@ -1753,16 +1753,26 @@ void sleep_now() {
           display.setTextSize(1);
           display.print("User Button operation");
           display.setCursor(8,68 );
-          display.print("   1 sec : Bluetooth on/off");
+          // Timings taken from button_event(), not from the old legend, which
+          // was wrong on two of three lines: it promised Bluetooth on/off at
+          // 1 s (that sleeps the board) and Sleep above 8 s (that does nothing
+          // - the console branch is compiled out when HAS_CONSOLE is false).
+          display.print("     tap : Bluetooth on/off");
           display.setCursor(8,78 );
-          display.print("  7 secs : Blutooth Pairing");
+          display.print(" hold 1s : Sleep");
           display.setCursor(8,88 );
-          display.print("> 8 secs : Sleep");
-          display.display(false);
+          display.print(" hold 5s : Bluetooth pairing");
+
+          // The node ID must be drawn BEFORE the refresh. It was printed
+          // after display(false) and before hibernate(), so it went into the
+          // buffer and never reached the panel - which defeated the whole
+          // point of a sleep screen you can identify without waking.
           display.setFont(SMALL_FONT);
           display.setTextSize(2);
           display.setCursor(5, 100);
           display.printf("%02X%02X", bt_dh[14], bt_dh[15]);   // last two bytes of the BLE MAC
+
+          display.display(false);
           display.hibernate();
           // No NeoPixel and no VEXT rail on this board - both lines were
           // T114 residue. P0.21 (PIN_VEXT_EN) is unconnected here, and
@@ -1806,9 +1816,11 @@ void button_event(uint8_t event, unsigned long duration) {
           if (bt_state != BT_STATE_CONNECTED) { bt_enable_pairing(); }
         #endif
       } else if (duration > 700) {
-        //BD
-        Serial.write("Button : Bluetooth pairing");
-        //BD
+        // This branch SLEEPS. It used to announce "Bluetooth pairing", which
+        // is the branch above it (>5000ms) - so anyone holding the button for
+        // a few seconds to pair was told they were pairing while the board
+        // shut down instead.
+        Serial.write("Button : Sleep");
         #if HAS_SLEEP
           sleep_now();
         #endif
