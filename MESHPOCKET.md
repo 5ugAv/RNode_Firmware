@@ -31,13 +31,13 @@ The commit history is the credit, and it is intact:
 |---:|---|---|
 | 34 | [@jacobeva](https://github.com/jacobeva) | RNode_Firmware_CE, and the review of PR #87 |
 | 29 | [Mark Qvist](https://github.com/markqvist) | RNode firmware and Reticulum itself |
-| 16 | this branch | the fixes below |
+| 16 (+2 docs) | this branch | the fixes below |
 | 14 | [@TheBeadster](https://github.com/TheBeadster) | **the MeshPocket port** |
 | 6 | Kevin Brosius, [@tomuk5](https://github.com/tomuk5), Owen, 0x62 | upstream RNode and CE work |
 
 Based on **RNode_Firmware_CE v1.75** (`2a4d6c7`), itself a fork of Mark Qvist's
-RNode_Firmware. That base matters for reading what follows: some of the defects
-below are in the port, and some are in CE and affect every nRF52 board it
+RNode_Firmware. That base matters for reading what follows: some of the
+defects below are in the port, and some are in CE and reach every board it
 supports. Each is labelled.
 
 Also owed:
@@ -80,17 +80,22 @@ SPIM3 and the radio keeps SPIM1.
 
 **Firmware validation was disabled for every board.** On a hash *mis*match the
 port set `fw_signature_validated = true`, not scoped to this board. The cause
-was real — `IMG_SIZE_START` (`bank_0_size` in the bootloader settings page) is
-written by serial DFU but never by UF2 drag-and-drop, so a UF2-flashed board
-hashes the wrong region forever. Rather than disable the check, the image size
+was real. `retrieve_application_size()` read a 4-byte value from `0xFF008`, in
+the bootloader's settings page, and used it to bound the hashed region. That
+value is not dependable across flash routes — exactly how it goes wrong depends
+on how the board was last written, and I could not settle the mechanism from
+sources I trust, so I am not going to state one. Rather than disable the check, the image size
 now comes from the linker (`__etext + sizeof(.data) − APPLICATION_START`), which
-is correct however the board was flashed. On this board, across
+is correct whatever the settings page holds and however the board was
+flashed. On this board, across
 successive flashes, the device-computed hash matched `sha256sum` of the flashed
 `.bin` exactly each time — two of those are recorded in the commit history.
 
 **Two SX1262 errata, missing from CE.** 15.4 (IQ polarity, register `0x0736`)
-must be re-applied after every `SetPacketParams` — without it *"LoRa RX
-demodulation fails silently while TX continues to work"*. 15.1 (`0x0889`, `REG_TX_MODULATION`) is
+must be re-applied after every `SetPacketParams`; upstream's comment warns that
+without it *"LoRa RX demodulation fails silently while TX continues to work"*,
+though this firmware only ever uses standard IQ and no such failure was observed
+here. 15.1 (`0x0889`, `REG_TX_MODULATION`) is
 *Modulation Quality with 500 kHz LoRa Bandwidth* — a transmit fix, applied at
 every bandwidth except 500 kHz; CE had it as an empty stub. Both ported from
 upstream RNode_Firmware, for parity. Upstream's comment additionally claims RX
@@ -193,29 +198,35 @@ The procedure that worked, in full:
 3. **Do not run a factory-erase UF2.** `rnodeconf --eeprom-wipe` formats the same
    LittleFS region in software, over serial, and self-recovers. The erase UF2 is
    the only drag-and-drop step in the procedure and the only one that cannot
-   recover itself — see "a torn UF2 does not fall back" below.
+   recover itself — see the torn-UF2 note below.
 4. **Build and flash by serial DFU:**
    ```
    arduino-cli compile -e --fqbn Heltec_nRF52:Heltec_nRF52:HT-n5262 \
        --build-property "compiler.cpp.extra_flags=\"-DBOARD_MODEL=0x46\""
-   adafruit-nrfutil dfu serial -pkg <build>/RNode_Firmware_CE.ino.zip \
-       -p <port> -b 115200 --singlebank
+   adafruit-nrfutil dfu serial \
+       -pkg build/Heltec_nRF52.Heltec_nRF52.HT-n5262/RNode_Firmware_CE.ino.zip \
+       -p "$PORT" -b 115200 --singlebank
    ```
    **`adafruit-nrfutil` exits 0 even when the flash fails.** Do not trust the
-   exit code; grep the output for `Device programmed.`
+   exit code; grep the output for `Device programmed.` The board re-enumerates
+   afterwards, so **re-resolve `$PORT` before step 6** — on this bench it moved
+   from `ttyACM1` to `ttyACM2` mid-run.
 5. **Patch `rnodeconf`** — upstream does not know product `0xD2` or model
    `0xCE`. `-r` works unpatched via a generic hex fallback, but `-i` and `-T`
    both raise `KeyError` on an unknown model.
 6. **Provision:**
    ```
-   rnodeconf <port> --eeprom-wipe
-   rnodeconf <port> -r --platform NRF52 --product d2 --model ce --hwrev 1
-   rnodeconf <port> -T --freq 915125000 --bw 125000 --sf 9 --cr 5 --txp 17
+   rnodeconf "$PORT" --eeprom-wipe
+   rnodeconf "$PORT" -r --platform NRF52 --product d2 --model ce --hwrev 1
+   rnodeconf "$PORT" -T --freq 915125000 --bw 125000 --sf 9 --cr 5 --txp 17
    ```
+   `--eeprom-wipe` also clears the Bluetooth-enable byte and the display
+   config, so the board returns on defaults. It goes quiet for ~13 s and the
+   port disappearing at the end is success, not failure.
 7. **Write the firmware hash**, or the board sits showing `FIRMWARE CORRUPT`:
    ```
-   rnodeconf <port> -L                      # prints the device's own hash
-   rnodeconf <port> --firmware-hash <hex>
+   rnodeconf "$PORT" -L                     # prints the device's own hash
+   rnodeconf "$PORT" --firmware-hash <hex>
    ```
    `-i` reporting "Device signature validated" refers to the EEPROM signature,
    which is a different thing.
@@ -229,14 +240,18 @@ build is running and not the T114 build that shares its FQBN.
 
 ## Hardware notes that will bite you
 
-**The USB-C port is charge-only.** It does not appear on Heltec's published node
-schematic at all. Flashing works only through the bundled magnetic pogo cable,
-and **there is no replacement source** — not from Heltec, not a reseller, not a
-user. Losing that cable strands the board.
+**The USB-C port is charge-only.** Heltec's own wiki says a standard USB cable
+"will not allow the system to recognize the serial port interface", and the
+published node schematic carries no USB-C connector — the MCU's USB pins go only
+to the pogo header. Flashing works only through the bundled magnetic pogo cable,
+and **no replacement source was found** — not on Heltec's store, not a
+reseller, not a user offering one. Losing that cable strands the board.
 
-**It cannot be power-cycled.** The 3V3 regulator's enable is tied to `BAT+`
-through a 100 kΩ pull-up with no control line, the cells are soldered, and the
-deepest documented state is a software sleep. Running the battery flat is the
+**It cannot be power-cycled.** Read from Heltec's published schematic: the 3V3
+regulator's enable is pulled to `BAT+` with no control line, and the cells are
+soldered. Heltec's own datasheet confirms the power button leaves "power still
+supplied to the wireless communication section"; the deepest documented state is
+a software sleep. Running the battery flat is the
 only true cold cycle short of opening a glued case.
 
 **`HT-n5262` does not identify this board.** It is Heltec's *module* name,
@@ -251,20 +266,23 @@ stock Meshtastic UF2s. The sibling T114 directory ships both a bootloader hex
 and an erase image. So recovery is reliable only while the bootloader survives.
 Never apply a bootloader-update UF2.
 
-**A torn drag-and-drop UF2 does not fall back to DFU.** Every successful UF2
-write stores `bank_0_crc = 0`, which permanently disables CRC validation, and
-blocks are written lowest-address-first — so after an interrupted copy the app's
-first two words are not `0xFFFFFFFF`, the bootloader considers it valid, and
-jumps into a half-written image. Recoverable by double-tapping RST, but not
+**A torn drag-and-drop UF2 may not fall back to DFU.** The bootloader decides an
+application is valid partly from a CRC that a previous successful UF2 write can
+leave disabled, and partly from whether the first words of the app region are
+still erased. On a board previously written by UF2, and with blocks arriving
+lowest-address-first, an interrupted copy can therefore leave an image the
+bootloader considers valid and jumps into. Recoverable by double-tapping RST, but not
 automatic. **Serial DFU erases first and does fail safe.** This is the reason to
 prefer it.
 
 **While BLE is connected, USB serial is ignored** — one host at a time, and
 Bluetooth wins. `rnodeconf` then reports *"Serial port opened, but RNode did not
 respond. Is a valid firmware installed?"*, which right after a flash reads
-exactly like a failed flash. Disconnecting in the app is **not** enough (Android
-keeps the GATT link for bonded devices) and tapping `USR` does not help either
-(the toggle is gated on not-being-connected). Turn the phone's Bluetooth off, or
+exactly like a failed flash. Disconnecting in the app was **not** enough — the link
+stayed up until the phone's Bluetooth was switched off entirely, which suggests
+the OS holds it for a bonded device. Tapping `USR` does not help either: that
+toggle is gated on not-being-connected, so while the firmware believes a phone
+is attached the button is inert. Turn the phone's Bluetooth off, or
 press `RST`. One-step diagnostic: scan for the board — a peripheral stops
 advertising while connected, so *not advertising and not answering USB* means
 something still holds the link, not a bad flash.
@@ -273,8 +291,9 @@ something still holds the link, not a bad flash.
 natural. A 6-digit passkey appears on the screen; it is regenerated every boot,
 which is cosmetic and does not invalidate an existing bond.
 
-**Qi charging degrades LoRa reception.** Relevant, since the device is designed
-to sit on the back of a phone.
+**Qi charging is reported to degrade LoRa reception.** Not measured here, but
+worth knowing before diagnosing poor range on a device designed to sit on the
+back of a phone while charging it.
 
 ---
 
