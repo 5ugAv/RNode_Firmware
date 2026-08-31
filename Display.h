@@ -729,6 +729,34 @@ void draw_cable_icon(int px, int py) {
   }
 }
 
+
+// A single unmistakable state mark: filled tick / three dots / cross inside a
+// ring. Drawn large and STATIC - it changes only when the state changes, so it
+// costs one panel refresh per transition rather than one per timer tick. The
+// shipped 16x16 bm_bt frames differ by as little as 8 pixels, which at this
+// panel's 0.194mm pitch is invisible; this is ~9mm across and cannot be missed.
+#define MARK_OK    0
+#define MARK_WAIT  1
+#define MARK_NO    2
+void draw_state_mark(int cx, int cy, uint8_t kind) {
+  const uint16_t INK = DISPLAY_WHITE;
+  stat_area.drawCircle(cx, cy, 12, INK);
+  stat_area.drawCircle(cx, cy, 11, INK);
+  if (kind == MARK_OK) {
+    for (int8_t t = -1; t <= 1; t++) {
+      stat_area.drawLine(cx-6, cy+1+t, cx-1, cy+6+t, INK);
+      stat_area.drawLine(cx-1, cy+6+t, cx+7, cy-5+t, INK);
+    }
+  } else if (kind == MARK_WAIT) {
+    for (int8_t dx = -6; dx <= 6; dx += 6) stat_area.fillCircle(cx+dx, cy, 2, INK);
+  } else {
+    for (int8_t t = -1; t <= 1; t++) {
+      stat_area.drawLine(cx-6, cy-6+t, cx+6, cy+6+t, INK);
+      stat_area.drawLine(cx+6, cy-6+t, cx-6, cy+6+t, INK);
+    }
+  }
+}
+
 void draw_bt_icon(int px, int py) {
   if (bt_state == BT_STATE_OFF) {
       stat_area.drawBitmap(px, py, bm_bt+0*32, 16, 16, DISPLAY_WHITE, DISPLAY_BLACK);
@@ -966,6 +994,23 @@ void draw_stat_area() {
       last_interface_page_flip = millis();
     }
 
+    #if DISPLAY == EINK_BW || DISPLAY == EINK_3C
+      // Two questions, two unmissable answers. The firmware's own icons say
+      // WHAT (bluetooth rune, LORA badge); our marks say the STATE. Replaces
+      // the 3mm indicators whose connected/disconnected frames differ by a
+      // handful of pixels - proven unreadable on the real panel.
+      stat_area.drawBitmap(3, 2, bm_bt+1*32, 16, 16, DISPLAY_WHITE, DISPLAY_BLACK);
+      draw_state_mark(44, 10,
+        (bt_state == BT_STATE_CONNECTED) ? MARK_OK :
+        (bt_state == BT_STATE_PAIRING)   ? MARK_WAIT : MARK_NO);
+      stat_area.drawLine(0, 23, 63, 23, DISPLAY_WHITE);
+
+      stat_area.drawBitmap(3, 26, bm_rf+0*32, 16, 16, DISPLAY_WHITE, DISPLAY_BLACK);
+      draw_state_mark(44, 34, interface_obj[0]->getRadioOnline() ? MARK_OK : MARK_NO);
+      stat_area.drawLine(0, 47, 63, 47, DISPLAY_WHITE);
+
+      draw_battery_bars(3, 51);
+    #else
     draw_cable_icon(3, 8);
     draw_bt_icon(3, 30);
     draw_lora_icon(interface_obj[0], 45, 8);
@@ -975,6 +1020,7 @@ void draw_stat_area() {
         draw_lora_icon(interface_obj[1], 45, 30);
     }
     draw_battery_bars(4, 58);
+    #endif
     radio_online = false;
     for (int i = 0; i < INTERFACE_COUNT; i++) {
         if (interface_obj[i]->getRadioOnline()) {
