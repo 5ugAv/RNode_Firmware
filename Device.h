@@ -142,10 +142,28 @@ void device_save_firmware_hash() {
 }
 
 #if MCU_VARIANT == MCU_NRF52
+// Provided by the linker script (nrf52_common.ld): __etext is where .data's
+// initialisers are stored in flash, so __etext + sizeof(.data) is the end of
+// the image.
+extern uint32_t __etext;
+extern uint32_t __data_start__;
+extern uint32_t __data_end__;
+
 uint32_t retrieve_application_size() {
     uint8_t bytes[4];
     memcpy(bytes, (const void*)IMG_SIZE_START, 4);
     uint32_t fw_len = bytes[0] | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24;
+
+    // IMG_SIZE_START is bank_0_size in the bootloader's settings page. Serial
+    // DFU fills it in correctly, but a UF2 drag-and-drop install zeroes the
+    // struct, and a never-written page reads as 0xFFFFFFFF (which would then
+    // overflow the end address). In both cases ask the linker instead, which
+    // is right regardless of how the board was flashed.
+    if (fw_len == 0 || fw_len == 0xFFFFFFFF) {
+        uint32_t data_len = (uint32_t)&__data_end__ - (uint32_t)&__data_start__;
+        fw_len = ((uint32_t)&__etext + data_len) - APPLICATION_START;
+    }
+
     return fw_len;
 }
 
@@ -200,16 +218,7 @@ void device_validate_partitions() {
   #endif
     for (uint8_t i = 0; i < DEV_HASH_LEN; i++) {
       if (dev_firmware_hash_target[i] != dev_firmware_hash[i]) {
-      //BD siganture validate = true
-      // firmware reports wrong on MeshP board,don't know why
-      // forced it to true too make code work
-         fw_signature_validated = true;
-
-      //BD
-
-        //fw_signature_validated = false;
-        
-        
+        fw_signature_validated = false;
         break;
       }
     }

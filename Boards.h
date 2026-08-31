@@ -1332,7 +1332,7 @@
       #define EEPROM_SIZE 296
       #define EEPROM_OFFSET EEPROM_SIZE-EEPROM_RESERVED
       #define BLE_MANUFACTURER "Heltec"
-      #define BLE_MODEL "T114"
+      #define BLE_MODEL "MeshPocket"
 
       #define PIN_T114_ADC_EN 6
       #define PIN_VEXT_EN 21
@@ -1410,7 +1410,7 @@
       #define HAS_BLE true
       #define HAS_CONSOLE false
       #define HAS_PMU true
-      #define HAS_NP true
+      #define HAS_NP false   // no NeoPixel on MeshPocket (T114 block residue)
       #define HAS_SD false
       #define HAS_TCXO true
       #define HAS_BUSY true
@@ -1475,8 +1475,8 @@
                   // SX1262
           {
               26, // pin_ss
-              4, //22,       //4 // pin_sclk      // the schatic shos pin 4 but meshtastic code uses pin 22 shared with eink display
-              5, //20,     // 5, // pin_mosi   // the schatic shos pin 5 but meshtastic code uses pin 20 shared with eink display
+              4,  // pin_sclk   P0.04 - LoRa is on SPI0; the e-ink's 22/20 are SPI1
+              5,  // pin_mosi   P0.05
               41, // pin_miso
               15, // pin_busy
               16, // pin_dio

@@ -321,6 +321,19 @@ void sx126x::setPacketParams(uint32_t preamble, uint8_t headermode, uint8_t leng
   buf[8] = 0x00; 
 
   executeOpcode(OP_PACKET_PARAMS_6X, buf, 9);
+
+  // SX1262 errata 15.4: SetPacketParams resets register 0x0736 to an
+  // incorrect default. For standard IQ (no inversion) bit 2 must be SET
+  // after every SetPacketParams call; for inverted IQ it must be CLEARED.
+  // Without this, LoRa RX demodulation fails silently while TX keeps
+  // working - which is the hardest possible failure to diagnose in the
+  // field. Ported from upstream RNode_Firmware sx126x.cpp.
+  uint8_t iqreg = readRegister(0x0736);
+  if (buf[5] == 0x00) {
+    writeRegister(0x0736, iqreg | 0x04);
+  } else {
+    writeRegister(0x0736, iqreg & ~0x04);
+  }
 }
 
 void sx126x::reset(void) {
@@ -378,10 +391,13 @@ int sx126x::begin()
 
   if (_rxen != -1) { pinMode(_rxen, OUTPUT); }
 
+  // The TCXO must be powered and settled BEFORE calibration: calibrating
+  // first trims the radio against the internal RC oscillator, leaving a
+  // frequency offset that is never reported as an error.
+  enableTCXO();
+
   calibrate();
   calibrate_image(_frequency);
-
-  enableTCXO();
 
   loraMode();
   standby();

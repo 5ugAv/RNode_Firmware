@@ -1761,9 +1761,9 @@ void sleep_now() {
           display.setCursor(5, 100);
           display.printf("%02X%02X", bt_dh[14], bt_dh[15]);   // last two bytes of the BLE MAC
           display.hibernate();
-        // BD addin telling sx1262 to deep sleep
-          npset(0,0,0);
-          digitalWrite(PIN_VEXT_EN, LOW);
+          // No NeoPixel and no VEXT rail on this board - both lines were
+          // T114 residue. P0.21 (PIN_VEXT_EN) is unconnected here, and
+          // HAS_NP is false, so npset() does not exist.
 
       #elif BOARD_MODEL == BOARD_TECHO
         for (uint8_t i = display_intensity; i > 0; i--) { analogWrite(pin_backlight, i-1); delay(1); }

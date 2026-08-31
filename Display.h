@@ -996,19 +996,6 @@ void draw_disp_area() {
   } else {
 
     
-    // --- DEBUG: show BT PIN as text whenever it's set ---
-    if (bt_ssp_pin != 0) {
-      char pinbuf[8];
-      snprintf(pinbuf, sizeof(pinbuf), "%06lu", (unsigned long)bt_ssp_pin);
-
-      // Top status line is already being partly overwritten; we'll just
-      // print "PIN xxxxxx" in the main content area near the top.
-      disp_area.setTextSize(1);
-      disp_area.setTextColor(DISPLAY_BLACK);
-      disp_area.setCursor(2, 13);          // y ~13 is a safe-ish spot
-      disp_area.print("PIN ");
-      disp_area.print(pinbuf);
-    }
   
     if (!disp_ext_fb or bt_ssp_pin != 0) {
 
