@@ -191,11 +191,27 @@ void busyCallback(const void* p) { display_callback(); }
   // pixels and therefore the hash.
   static uint32_t epd_last_frame_hash = 0;
 
+  // Fingerprint of what the screen MEANS, as opposed to what it shows. The
+  // frame hash above changes whenever any pixel moves - including a percentage
+  // ticking over - so it cannot distinguish "one digit changed" from "the link
+  // just dropped". Only the second deserves a full refresh, and it must get
+  // one: the tick, the dots and the cross share a single circle, so a partial
+  // update prints the new mark on top of the old and the panel then says two
+  // contradictory things at once. Held to state that is genuinely categorical.
+  static uint32_t epd_last_meaning = 0xFFFFFFFFUL;   // forces a full first paint
+
   // Call at a state transition - link gained or lost, fault raised or cleared,
   // entering sleep. Cheap: it only sets a flag; the next scheduled repaint
   // becomes a full one.
   void display_force_full_refresh() { epd_force_full_refresh = true; }
-  const uint8_t PARTIAL_LIMIT = 100;     // matches GD recommendation
+
+  // 100 partials at a 2s cadence is over three minutes of accumulated residue
+  // before the panel is cleaned - long enough that text in the lower pane
+  // becomes a legible double-exposure. 30 keeps the worst case near a minute.
+  // This bound only bites while the frame is actually changing: a static
+  // screen fails the dirty check and does not refresh at all, so an idle
+  // board still costs nothing.
+  const uint8_t PARTIAL_LIMIT = 30;
 //BD
 
 
@@ -740,8 +756,8 @@ void draw_cable_icon(int px, int py) {
 #define MARK_NO    2
 void draw_state_mark(int cx, int cy, uint8_t kind) {
   const uint16_t INK = DISPLAY_WHITE;
-  stat_area.drawCircle(cx, cy, 12, INK);
-  stat_area.drawCircle(cx, cy, 11, INK);
+  stat_area.drawCircle(cx, cy, 10, INK);
+  stat_area.drawCircle(cx, cy, 9, INK);
   if (kind == MARK_OK) {
     for (int8_t t = -1; t <= 1; t++) {
       stat_area.drawLine(cx-6, cy+1+t, cx-1, cy+6+t, INK);
@@ -955,7 +971,11 @@ void draw_waterfall(int px, int py) {
 void draw_stat_area() {
   if (device_init_done) {
     if (!stat_area_initialised) {
+      #if DISPLAY != EINK_BW && DISPLAY != EINK_3C
+        // bm_frame is the OLED/TFT box grid. The e-ink pane is laid out from
+        // scratch below, so the frame would draw boxes straight through it.
         stat_area.drawBitmap(0, 0, bm_frame, 64, 64, DISPLAY_WHITE, DISPLAY_BLACK);
+      #endif
       stat_area_initialised = true;
     }
 
@@ -1000,13 +1020,13 @@ void draw_stat_area() {
       // the 3mm indicators whose connected/disconnected frames differ by a
       // handful of pixels - proven unreadable on the real panel.
       stat_area.drawBitmap(3, 2, bm_bt+1*32, 16, 16, DISPLAY_WHITE, DISPLAY_BLACK);
-      draw_state_mark(44, 10,
+      draw_state_mark(44, 11,
         (bt_state == BT_STATE_CONNECTED) ? MARK_OK :
         (bt_state == BT_STATE_PAIRING)   ? MARK_WAIT : MARK_NO);
-      stat_area.drawLine(0, 23, 63, 23, DISPLAY_WHITE);
+      stat_area.drawLine(0, 24, 63, 24, DISPLAY_WHITE);
 
       stat_area.drawBitmap(3, 26, bm_rf+0*32, 16, 16, DISPLAY_WHITE, DISPLAY_BLACK);
-      draw_state_mark(44, 34, interface_obj[0]->getRadioOnline() ? MARK_OK : MARK_NO);
+      draw_state_mark(44, 35, interface_obj[0]->getRadioOnline() ? MARK_OK : MARK_NO);
       stat_area.drawLine(0, 47, 63, 47, DISPLAY_WHITE);
 
       draw_battery_bars(3, 51);
@@ -1028,8 +1048,11 @@ void draw_stat_area() {
             break;
         }
     }
-    draw_quality_bars(28, 56);
-    draw_signal_bars(44, 56);
+    #if DISPLAY != EINK_BW && DISPLAY != EINK_3C
+      // These sit at y=56, straight over the e-ink layout's battery row.
+      draw_quality_bars(28, 56);
+      draw_signal_bars(44, 56);
+    #endif
     if (radio_online) {
       #if DISPLAY == EINK_BW || DISPLAY == EINK_3C
         // NOT on e-ink. draw_waterfall() appends a sample and scrolls on
@@ -1402,6 +1425,24 @@ void update_display(bool blank = false) {
         /* Given Mesh pocket seperate display refresh from the other
         Eink because it must wait for the driver to finish before doing any other updates
         this helps stop ghosting */
+
+        // Categorical state only - see epd_last_meaning above. When any of
+        // these changes the panel is about to say something different in
+        // KIND, and that is precisely when a partial refresh betrays it: the
+        // outgoing mark stays as residue inside the same circle as the
+        // incoming one. display_force_full_refresh() existed for this and was
+        // never wired to anything, so every transition was drawn as a partial.
+        uint32_t epd_meaning = (uint32_t)bt_state
+                             | ((uint32_t)battery_state            <<  8)
+                             | ((uint32_t)(radio_online         ? 1:0) << 16)
+                             | ((uint32_t)(hw_ready             ? 1:0) << 17)
+                             | ((uint32_t)(firmware_update_mode ? 1:0) << 18)
+                             | ((uint32_t)(console_active       ? 1:0) << 19);
+        if (epd_meaning != epd_last_meaning) {
+          epd_last_meaning = epd_meaning;
+          display_force_full_refresh();
+        }
+
         uint32_t epd_hash = epd_frame_hash();
         // epd_blanked matters: after a blank/un-blank the canvases can hash
         // IDENTICALLY to the frame before the blank, so a pure content check
