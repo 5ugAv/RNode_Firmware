@@ -200,6 +200,16 @@ void busyCallback(const void* p) { display_callback(); }
   // contradictory things at once. Held to state that is genuinely categorical.
   static uint32_t epd_last_meaning = 0xFFFFFFFFUL;   // forces a full first paint
 
+  // Floor on how often a state change may spend a blank-and-repaint. A blank
+  // costs ~7s of flashing, so anything that can chatter must not be able to
+  // drive it continuously. battery_state did exactly that on first attempt: on
+  // this board it is read straight from nrfx_power_usbstatus_get() with no
+  // hysteresis, and a powerbank with USB both in and out flaps it freely, so
+  // the panel blanked and repainted forever. It is out of the trigger now, and
+  // this floor means no signal added later can reintroduce the same fault.
+  static uint32_t last_epd_blank = 0;
+  #define MIN_BLANK_INTERVAL 30000   // 30s
+
   // Call at a state transition - link gained or lost, fault raised or cleared,
   // entering sleep. Cheap: it only sets a flag; the next scheduled repaint
   // becomes a full one.
@@ -1437,18 +1447,26 @@ void update_display(bool blank = false) {
         // Categorical state only, so this is a transition cost, never a running
         // one. It buys the clean change at the price of a second full refresh:
         // roughly 7s of flashing on a state change rather than 3.6s.
+        // battery_state is deliberately NOT here. It is the charge state, which
+        // is drawn as a bar - it never shares a circle with another mark, so it
+        // has nothing to de-ghost - and on this board it is read directly from
+        // nrfx_power_usbstatus_get() with no hysteresis, so it chatters.
+        // Including it blanked the panel continuously.
         uint32_t epd_meaning = (uint32_t)bt_state
-                             | ((uint32_t)battery_state            <<  8)
                              | ((uint32_t)(radio_online         ? 1:0) << 16)
                              | ((uint32_t)(hw_ready             ? 1:0) << 17)
                              | ((uint32_t)(firmware_update_mode ? 1:0) << 18)
                              | ((uint32_t)(console_active       ? 1:0) << 19);
         if (epd_meaning != epd_last_meaning) {
           epd_last_meaning = epd_meaning;
-          if (digitalRead(pin_disp_busy) == LOW) {
+          if (digitalRead(pin_disp_busy) == LOW
+              && (current - last_epd_blank >= MIN_BLANK_INTERVAL)) {
             epd_blank();          // full white flush - the de-ghost itself
             epd_blanked = true;   // keeps the dirty gate from skipping the repaint
+            last_epd_blank = current;
           }
+          // Always taken, blank or not: a state change must still repaint in
+          // full, so a rate-limited transition stays correct, just less clean.
           display_force_full_refresh();
         }
       #endif

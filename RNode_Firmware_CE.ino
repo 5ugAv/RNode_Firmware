@@ -868,6 +868,34 @@ void transmit(RadioInterface* radio, uint16_t size) {
   }
 }
 
+// Set to false to let a paired phone provision the device, as it could before.
+#define DENY_PROVISIONING_OVER_BT true
+
+// Commands that wipe, re-identify or re-provision the device, as opposed to
+// operating it.
+//
+// USB and Bluetooth feed the SAME parser - buffer_serial() simply chooses the
+// source - so before this gate a bonded phone held every power a cabled host
+// did, including erasing the EEPROM outright. Bonds also persist in flash
+// across reboots, so a phone paired once kept that power indefinitely.
+//
+// Denying these over Bluetooth costs nothing operationally: Reticulum's own
+// RNodeInterface sends only data, radio parameters, the stats set, the
+// framebuffer commands and reset. It sends none of the below, so a phone has
+// no legitimate reason to.
+static bool is_provisioning_command(uint8_t c) {
+  return c == CMD_UNLOCK_ROM      // erases the whole EEPROM - the worst of them
+      || c == CMD_ROM_WRITE       // writes arbitrary EEPROM bytes
+      || c == CMD_CONF_SAVE       // overwrites the saved radio config
+      || c == CMD_CONF_DELETE     // erases the saved radio config
+      || c == CMD_DEV_SIG         // overwrites the device signature
+      || c == CMD_FW_HASH         // overwrites the stored firmware hash
+      || c == CMD_FW_UPD;         // drops the device into firmware update mode
+}
+
+// True while a denied command's remaining bytes are being discarded.
+static bool cmd_denied = false;
+
 void serial_callback(uint8_t sbyte) {
   //BD
   			//	if (command < 0x10) Serial.print('0');
@@ -907,10 +935,24 @@ void serial_callback(uint8_t sbyte) {
     IN_FRAME = true;
     command = CMD_UNKNOWN;
     frame_len = 0;
+    cmd_denied = false;   // new frame, clean slate
   } else if (IN_FRAME && frame_len < MTU) {
     // Have a look at the command byte first
     if (frame_len == 0 && command == CMD_UNKNOWN) {
         command = sbyte;
+
+        #if (HAS_BLUETOOTH || HAS_BLE == true) && DENY_PROVISIONING_OVER_BT
+          // The only place the transport is allowed to matter. Deny once, here,
+          // rather than in seven separate handlers where one could be missed.
+          if (bt_state == BT_STATE_CONNECTED && is_provisioning_command(sbyte)) {
+            cmd_denied = true;
+            kiss_indicate_error(ERROR_EEPROM_LOCKED);
+          }
+        #endif
+
+    } else if (cmd_denied) {
+        // Swallow the rest of a denied frame. Falling through instead would let
+        // its payload bytes be read as commands in their own right.
 
     } else if  (command == CMD_SEL_INT) {
             interface = sbyte;
