@@ -18,22 +18,27 @@ the port's own binaries were flashed successfully by others (see below).
 
 ## Whose work this is
 
-**This branch is [@TheBeadster](https://github.com/TheBeadster)'s port**, from
+**This repository is [@TheBeadster](https://github.com/TheBeadster)'s port**, from
 [PR #87](https://github.com/liberatedsystems/RNode_Firmware_CE/pull/87), with
-sixteen code commits on top. The board definition, the pin map, the e-ink plumbing,
+work on top. The board definition, the pin map, the e-ink plumbing,
 the BLE passkey rewrite and the working binaries are all theirs. Two typos stopped it
 building, and the fixes below are mostly in code it inherited rather than code
 it wrote.
 
-The commit history is the credit, and it is intact:
+The commit history is the credit, and it is intact — all 1,060 commits of it,
+reaching back to the beginning of Mark Qvist's RNode firmware:
 
 | commits | who | what |
 |---:|---|---|
-| 34 | [@jacobeva](https://github.com/jacobeva) | RNode_Firmware_CE, and the review of PR #87 |
-| 29 | [Mark Qvist](https://github.com/markqvist) | RNode firmware and Reticulum itself |
-| 16 (+2 docs) | this branch | the fixes below |
+| 752 | [Mark Qvist](https://github.com/markqvist) | RNode firmware and Reticulum itself |
+| 219 | [@jacobeva](https://github.com/jacobeva) | RNode_Firmware_CE, and the review of PR #87 |
+| 26 | this repository | the fixes below |
 | 14 | [@TheBeadster](https://github.com/TheBeadster) | **the MeshPocket port** |
-| 6 | Kevin Brosius, [@tomuk5](https://github.com/tomuk5), Owen, 0x62 | upstream RNode and CE work |
+| 9 | Kevin Brosius | upstream RNode work |
+| 40+ | [@liamcottle](https://github.com/liamcottle), mrmx, jeremy, [@tomuk5](https://github.com/tomuk5), karamo, attermann, macvenez, Owen, 0x62 and others | upstream RNode and CE work |
+
+*(Counts are from the full history at the time of writing and will drift as work
+continues; `git shortlog -sn` is the live answer.)*
 
 Based on **RNode_Firmware_CE v1.75** (`2a4d6c7`), itself a fork of Mark Qvist's
 RNode_Firmware. That base matters for reading what follows: some of the

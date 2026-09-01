@@ -1,4 +1,39 @@
+# RNode firmware for the HELTEC® MeshPocket
+
+This repository turns the **HELTEC® MeshPocket** (HT-298B — nRF52840 + SX1262,
+2.13" e-ink) into an [RNode](https://unsigned.io/rnode/): an open digital radio
+interface usable from [Reticulum](https://reticulum.network), Sideband, MeshChat,
+Columba and anything else that speaks the RNode protocol.
+
+**→ Read [MESHPOCKET.md](MESHPOCKET.md) first.** It covers what works, what was
+broken and fixed, how to flash the board, and how to pair it.
+
+*Unofficial and community-maintained. Not affiliated with, endorsed by, or
+supported by Heltec Automation; HELTEC® is their trademark.*
+
+## Where this came from
+
+GitHub cannot show a fork badge here (an account may hold only one fork per
+network, and that slot was already taken), so the lineage is stated plainly
+instead — and the full commit history below backs every line of it:
+
+- [**Mark Qvist**](https://github.com/markqvist) — [RNode_Firmware](https://github.com/markqvist/RNode_Firmware),
+  and Reticulum itself. None of this exists without it.
+- [**liberatedsystems / @jacobeva**](https://github.com/liberatedsystems/RNode_Firmware_CE) —
+  RNode_Firmware_CE, the community fork this is built on (v1.75, `2a4d6c7`).
+- [**@TheBeadster**](https://github.com/TheBeadster) — **the MeshPocket port itself**,
+  from [PR #87](https://github.com/liberatedsystems/RNode_Firmware_CE/pull/87).
+  The board definition, pin map, e-ink plumbing and BLE passkey work are theirs.
+- This repository — build fixes, radio errata, display corrections and a
+  Bluetooth privilege gate, all detailed in MESHPOCKET.md.
+
+Licensed **GPL-3.0**, as inherited. `git shortlog -sn` is the live credit list.
+
+---
+
 # RNode Firmware - Community Edition
+
+*(The upstream CE README follows, unchanged.)*
 
 This is the community maintained fork of the open firmware which powers RNode devices. It has been created to continue to expand development and support for more hardware devices, as the upstream repository is no longer accepting PRs for new hardware support. The original repository by Mark Qvist can be found [here](https://github.com/markqvist/RNode_Firmware).
 
