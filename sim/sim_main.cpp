@@ -102,20 +102,51 @@ int main(int argc, char** argv) {
     console_active   = false;
     interface_obj[0] = &sim_radio;
 
-    if (state == "linked")        { bt_state = BT_STATE_CONNECTED; }
-    else if (state == "pairing")  { bt_state = BT_STATE_PAIRING; bt_ssp_pin = 418209; }
-    else if (state == "nophone")  { bt_state = BT_STATE_ON; }
-    else if (state == "btoff")    { bt_state = BT_STATE_OFF; }
-    else if (state == "noradio")  { sim_radio.online = false; radio_online = false;
-                                    modems_installed = false; hw_ready = false; }
-    else if (state == "corrupt")  { fw_signature_validated = false; hw_ready = false; }
-    else if (state == "busy")     { bt_state = BT_STATE_CONNECTED;
-                                    sim_radio.chutil = 42; sim_radio.airtime = 12; }
-    else if (state == "lowbatt")  { bt_state = BT_STATE_CONNECTED; battery_percent = 9; }
+    // A COMMA-SEPARATED state argument draws each state in turn into the SAME
+    // canvases, then dumps the final frame. That distinction matters: the
+    // firmware never rebuilds these buffers from nothing, it redraws over
+    // whatever the last frame left behind. Rendering one state into a fresh
+    // canvas - all this could do before - cannot show an element that fails to
+    // erase its predecessor, which is exactly how a cross and a "connecting"
+    // mark ended up occupying one circle on real hardware while every
+    // single-state render here looked perfect.
+    //
+    //   ./sim nophone,pairing seq.pgm     one mark, or two on top of each other
+    size_t pos = 0; std::string seq = state; int drawn = 0;
+    while (pos <= seq.size()) {
+        size_t comma = seq.find(',', pos);
+        std::string s = seq.substr(pos, comma == std::string::npos
+                                        ? std::string::npos : comma - pos);
+        // Reset only the world, never the canvases - the canvases are the
+        // thing under test.
+        sim_radio.online = true; radio_online = true;
+        modems_installed = true; hw_ready = true;
+        fw_signature_validated = true;
+        sim_radio.chutil = 0; sim_radio.airtime = 0;
+        battery_percent = 76; bt_ssp_pin = 0;
 
-    draw_stat_area();
-    draw_disp_area();
+        if (s == "linked")        { bt_state = BT_STATE_CONNECTED; }
+        else if (s == "pairing")  { bt_state = BT_STATE_PAIRING; bt_ssp_pin = 418209; }
+        else if (s == "nophone")  { bt_state = BT_STATE_ON; }
+        else if (s == "btoff")    { bt_state = BT_STATE_OFF; }
+        else if (s == "noradio")  { sim_radio.online = false; radio_online = false;
+                                    modems_installed = false; hw_ready = false; }
+        else if (s == "corrupt")  { fw_signature_validated = false; hw_ready = false; }
+        else if (s == "busy")     { bt_state = BT_STATE_CONNECTED;
+                                    sim_radio.chutil = 42; sim_radio.airtime = 12; }
+        else if (s == "lowbatt")  { bt_state = BT_STATE_CONNECTED; battery_percent = 9; }
+        else { fprintf(stderr, "unknown state '%s'\n", s.c_str()); return 2; }
+
+        draw_stat_area();
+        draw_disp_area();
+        drawn++;
+        printf("  drew '%s'\n", s.c_str());
+
+        if (comma == std::string::npos) break;
+        pos = comma + 1;
+    }
+
     dump(out);
-    printf("rendered '%s' -> %s\n", state.c_str(), out);
+    printf("rendered %d state(s) -> %s\n", drawn, out);
     return 0;
 }

@@ -1015,6 +1015,22 @@ void draw_stat_area() {
     }
 
     #if DISPLAY == EINK_BW || DISPLAY == EINK_3C
+      // Start from an empty pane every frame. Nothing else in this file clears
+      // stat_area - the original layout never needed it, because every element
+      // was a drawBitmap() with an explicit background colour, which repaints
+      // its own rectangle and so overwrites whatever it replaces.
+      //
+      // The state marks are not bitmaps. drawCircle/drawLine/fillCircle set ink
+      // pixels and leave every other pixel untouched, so a cross drawn once
+      // stayed in the buffer for the life of the boot and the next state's mark
+      // was added on top of it - a cross and three dots inside one circle,
+      // saying "disconnected" and "connecting" simultaneously.
+      //
+      // This looked like panel ghosting and is not: the two marks are genuinely
+      // both in the buffer, which is why forcing a full refresh did not shift
+      // it. Clearing the canvas is the actual fix.
+      stat_area.fillScreen(DISPLAY_BLACK);
+
       // Two questions, two unmissable answers. The firmware's own icons say
       // WHAT (bluetooth rune, LORA badge); our marks say the STATE. Replaces
       // the 3mm indicators whose connected/disconnected frames differ by a
