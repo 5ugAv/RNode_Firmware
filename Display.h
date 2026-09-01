@@ -189,7 +189,6 @@ void busyCallback(const void* p) { display_callback(); }
   // definition nothing new to show, so the refresh is skipped. This is exact
   // rather than a per-field guess: any change from any source alters the
   // pixels and therefore the hash.
-  static uint32_t epd_last_frame_hash = 0;
 
   // Fingerprint of what the screen MEANS, as opposed to what it shows. The
   // frame hash above changes whenever any pixel moves - including a percentage
@@ -296,16 +295,31 @@ int p_as_y = 0;
 GFXcanvas1 stat_area(64, 64);
 GFXcanvas1 disp_area(64, 64);
 
-  static uint32_t epd_frame_hash() {
-    // FNV-1a over both canvas buffers.
+  // FNV-1a over ONE canvas buffer. The two panes are hashed separately because
+  // they change for completely different reasons and deserve different
+  // cadences.
+  //
+  // The stat pane is state: a mark flips when the link or the radio does, which
+  // is rare and must be shown at once. The text pane carries airtime and
+  // channel load printed to one decimal, which during traffic changes on very
+  // nearly every sample.
+  //
+  // Hashing them together meant that decimal marked the WHOLE panel dirty, so a
+  // busy node repainted every 2s - about 43,000 partial refreshes a day, spent
+  // animating a digit nobody can read at this size. E-ink is not free to
+  // repaint; that is the wear budget going on noise.
+  static uint32_t epd_pane_hash(const uint8_t *p) {
     uint32_t h = 2166136261UL;
-    const uint8_t *bufs[2] = { disp_area.getBuffer(), stat_area.getBuffer() };
-    for (uint8_t b = 0; b < 2; b++) {
-      const uint8_t *p = bufs[b];
-      for (uint16_t i = 0; i < (64 * 64) / 8; i++) { h = (h ^ p[i]) * 16777619UL; }
-    }
+    for (uint16_t i = 0; i < (64 * 64) / 8; i++) { h = (h ^ p[i]) * 16777619UL; }
     return h;
   }
+
+  static uint32_t epd_last_stat_hash = 0;
+  static uint32_t epd_last_disp_hash = 0;
+
+  // How long the text pane may sit stale. State still shows immediately - only
+  // the numbers wait. Cuts the busy-node refresh rate by roughly ten times.
+  #define STATS_MIN_INTERVAL 20000   // 20s
 
 
 //BD 
@@ -1494,7 +1508,16 @@ void update_display(bool blank = false) {
         Eink because it must wait for the driver to finish before doing any other updates
         this helps stop ghosting */
 
-        uint32_t epd_hash = epd_frame_hash();
+        uint32_t epd_stat_h = epd_pane_hash(stat_area.getBuffer());
+        uint32_t epd_disp_h = epd_pane_hash(disp_area.getBuffer());
+
+        // State shows at once; numbers wait. A mark flipping is news and must
+        // not sit stale behind a timer, while airtime's decimal place is not
+        // worth a refresh every 2s for the life of the device.
+        bool stat_changed = (epd_stat_h != epd_last_stat_hash);
+        bool disp_changed = (epd_disp_h != epd_last_disp_hash)
+                            && (current - last_epd_refresh >= STATS_MIN_INTERVAL);
+
         // epd_blanked matters: after a blank/un-blank the canvases can hash
         // IDENTICALLY to the frame before the blank, so a pure content check
         // would skip the repaint and leave the panel blank with no way back.
@@ -1503,14 +1526,18 @@ void update_display(bool blank = false) {
         // and - worse - if a refresh is interrupted (GxEPD2 gives up after a
         // 10s busy timeout) the hash was already recorded as displayed, so
         // the panel would stay wrong permanently. This lets it self-heal.
-        bool epd_dirty = (epd_hash != epd_last_frame_hash)
+        bool epd_dirty = stat_changed
+                      || disp_changed
                       || epd_force_full_refresh
                       || epd_blanked
                       || (current - last_epd_full_refresh >= REFRESH_PERIOD);
 
         if (epd_dirty && digitalRead(pin_disp_busy) == LOW) {
           if (current-last_epd_refresh >= epd_update_interval) {
-          epd_last_frame_hash = epd_hash;
+          // Both are recorded whenever a repaint happens, so a text change that
+          // rode along with a state change is not re-reported a moment later.
+          epd_last_stat_hash = epd_stat_h;
+          epd_last_disp_hash = epd_disp_h;
           if ((current-last_epd_full_refresh >= REFRESH_PERIOD) || partials_since_full >= PARTIAL_LIMIT
               || epd_force_full_refresh) {
             // A FULL refresh is the only thing that clears ghosting: it drives
