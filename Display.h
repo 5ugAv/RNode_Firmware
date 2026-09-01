@@ -1419,6 +1419,40 @@ void update_display(bool blank = false) {
         display.clearDisplay();
       #endif
 
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+        // A blank frame between states, as asked for: wipe the panel to white
+        // and only then paint the new state, instead of laying it over the old
+        // one.
+        //
+        // This has to happen HERE, before the content is composed below - the
+        // buffer is repainted every pass, so blanking after composition would
+        // throw away the frame we are about to show.
+        //
+        // It addresses real panel residue, which is a separate fault from the
+        // marks stacking up in the canvas: the film keeps a faint memory of the
+        // previous image that redrawing alone does not dislodge, and that is
+        // what made the stats line read as a double exposure. Driving every
+        // pixel to white first is what clears it.
+        //
+        // Categorical state only, so this is a transition cost, never a running
+        // one. It buys the clean change at the price of a second full refresh:
+        // roughly 7s of flashing on a state change rather than 3.6s.
+        uint32_t epd_meaning = (uint32_t)bt_state
+                             | ((uint32_t)battery_state            <<  8)
+                             | ((uint32_t)(radio_online         ? 1:0) << 16)
+                             | ((uint32_t)(hw_ready             ? 1:0) << 17)
+                             | ((uint32_t)(firmware_update_mode ? 1:0) << 18)
+                             | ((uint32_t)(console_active       ? 1:0) << 19);
+        if (epd_meaning != epd_last_meaning) {
+          epd_last_meaning = epd_meaning;
+          if (digitalRead(pin_disp_busy) == LOW) {
+            epd_blank();          // full white flush - the de-ghost itself
+            epd_blanked = true;   // keeps the dirty gate from skipping the repaint
+          }
+          display_force_full_refresh();
+        }
+      #endif
+
       if (recondition_display) {
         disp_target_fps = 30;
         disp_update_interval = 1000/disp_target_fps;
@@ -1441,23 +1475,6 @@ void update_display(bool blank = false) {
         /* Given Mesh pocket seperate display refresh from the other
         Eink because it must wait for the driver to finish before doing any other updates
         this helps stop ghosting */
-
-        // Categorical state only - see epd_last_meaning above. When any of
-        // these changes the panel is about to say something different in
-        // KIND, and that is precisely when a partial refresh betrays it: the
-        // outgoing mark stays as residue inside the same circle as the
-        // incoming one. display_force_full_refresh() existed for this and was
-        // never wired to anything, so every transition was drawn as a partial.
-        uint32_t epd_meaning = (uint32_t)bt_state
-                             | ((uint32_t)battery_state            <<  8)
-                             | ((uint32_t)(radio_online         ? 1:0) << 16)
-                             | ((uint32_t)(hw_ready             ? 1:0) << 17)
-                             | ((uint32_t)(firmware_update_mode ? 1:0) << 18)
-                             | ((uint32_t)(console_active       ? 1:0) << 19);
-        if (epd_meaning != epd_last_meaning) {
-          epd_last_meaning = epd_meaning;
-          display_force_full_refresh();
-        }
 
         uint32_t epd_hash = epd_frame_hash();
         // epd_blanked matters: after a blank/un-blank the canvases can hash
