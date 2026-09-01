@@ -202,7 +202,26 @@ void measure_battery() {
     #elif BOARD_MODEL == BOARD_HELTEC_T114
       float battery_measurement = (float)(analogRead(pin_vbat)) * 0.017165;
     #elif BOARD_MODEL == BOARD_HELTEC_MESHP
-      float battery_measurement = (float)(analogRead(pin_vbat)) * 0.017165;  
+      // (3.6/1024) * 4.6425 = 0.0163213.
+      //
+      // 3.6V full scale and 10 bits are this core's ADC defaults (internal
+      // 0.6V reference, gain 1/6, readResolution 10) - the analogReference()
+      // call elsewhere in this file is inside the RAK4631 block and does not
+      // reach here. 4.6425 is Heltec's divider figure for THIS board, from
+      // Meshtastic variants/nrf52840/heltec_mesh_pocket/variant.h ADC_MULTIPLIER;
+      // the same file confirms BATTERY_PIN 29 and ADC_CTRL 32+2, which is why
+      // the pins above are right.
+      //
+      // What stood here was 0.017165 - the T114's constant, inherited when this
+      // block was copied from it. The T114's divider is 4.916, 5.9% higher, so
+      // a full pack reported about 4.45V. That is above BAT_V_FLOAT (4.33), and
+      // CHARGED is the one state that draws the plug symbol, so the battery
+      // lane was stuck on "plug" no matter what the cable did.
+      //
+      // Derived, not measured: the same arithmetic reproduces the T114's own
+      // constant to 0.7% and the T-Echo's to 0.5%, which is what argues it is
+      // right. A bench calibration against a known cell would settle it.
+      float battery_measurement = (float)(analogRead(pin_vbat)) * 0.0163213;
     #elif BOARD_MODEL == BOARD_TECHO
       float battery_measurement = (float)(analogRead(pin_vbat)) * 0.007067;
     #else
