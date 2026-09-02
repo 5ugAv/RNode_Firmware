@@ -86,6 +86,27 @@ The RNode Firmware supports the following boards:
 - Homebrew RNodes based on Adafruit Feather ESP32 boards
 - Homebrew RNodes based on generic ESP32 boards
 
+## Boards this firmware cannot flash
+
+The list above is what **this** firmware supports. Several boards work perfectly
+well as RNodes but are not in it — their port lives in a different repository, or
+in the community fork. They are listed here so that a board being absent above is
+not mistaken for the board being unsupported.
+
+| Board | Flash it from | What it is |
+| :--- | :--- | :--- |
+| **Heltec MeshPocket** (HT-298B) | [5ugAv/HELTEC-MeshPocket-RNode](https://github.com/5ugAv/HELTEC-MeshPocket-RNode) | nRF52840 + SX1262 with a 2.13" e-ink screen, built into a 10000 mAh powerbank that magnet-mounts to a phone. Unofficial community port of RNode_Firmware_CE. |
+| **Heltec Wireless Tracker** (HTIT v1.1) | [5ugAv/heltec-tracker-rnode](https://github.com/5ugAv/heltec-tracker-rnode) | ESP32-S3 + SX1262, UC6580 dual-band GNSS, ST7735 TFT and a NeoPixel status LED. |
+| **openCom XL** | [liberatedsystems/RNode_Firmware_CE](https://github.com/liberatedsystems/RNode_Firmware_CE) | nRF52 carrying **both** an SX1262 and an SX1280, so it works on 2.4 GHz as well. |
+| Newer hardware generally | [liberatedsystems/RNode_Firmware_CE](https://github.com/liberatedsystems/RNode_Firmware_CE) | The community fork exists to take new board ports, which upstream no longer accepts. If a board is missing from both lists, that fork is where to look — or where to add it. |
+
+**Related, but not an RNode:**
+[RTNode-2400](https://github.com/5ugAv/RTNode-2400) is a *standalone* Reticulum
+transport node — it carries the mesh by itself rather than acting as a modem for a
+host computer. Different job, easy to confuse with an RNode.
+[Corresponding GPL-3.0 source](https://github.com/5ugAv/node-firmware) for devices
+built from these trees.
+
 ## Supported Transceiver Modules
 The RNode Firmware supports all transceiver modules based on Semtech **SX1276**, **SX1278**, **SX1262**, **SX1268** and **SX1280** chips, that have an **SPI interface** and expose the relevant **DIO** interrupt pins from the chip.
 
