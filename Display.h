@@ -398,8 +398,11 @@ bool display_init() {
     hspi.begin(DISPLAY_CLK, -1, DISPLAY_MOSI, DISPLAY_CS);
     display.initR(INITR_MINI160x80_PLUGIN);
     display.setSPISpeed(20000000);
-    display.setRotation(2);
-    display.setRotation(1);
+    // rotation 3 = 180 deg from the old landscape: the tracker rides in the
+    // medic USB-side-up, so this way the face reads right on the machine it
+    // lives in (operator, 2026-08-27: "flip the screen and make that
+    // standard for its birth"). The stray setRotation(2) dead-write is gone.
+    display.setRotation(3);
     display.fillScreen(SSD1306_BLACK);
     if (false) {
     #else
@@ -460,7 +463,7 @@ bool display_init() {
           display.setRotation(3);
         #elif BOARD_MODEL == BOARD_HELTEC_WIRELESS_TRACKER
           disp_mode = DISP_MODE_LANDSCAPE;
-          display.setRotation(1);
+          display.setRotation(3);   // 180 deg: standard tracker-birth pose
         #else
           disp_mode = DISP_MODE_PORTRAIT;
           display.setRotation(3);
@@ -1186,6 +1189,14 @@ extern uint8_t npr, npg, npb;
 extern int last_rssi;
 extern int current_rssi, noise_floor;
 extern bool noise_floor_sampled;   // false until 128 samples collected / after an RF recal
+#if HAS_GPS
+// the GNSS object lives in the .ino (declared AFTER this header is pulled in
+// via Utilities.h line 18, so a forward extern is required); TinyGPSPlus.h's
+// include guard makes this double-include safe.
+#include <TinyGPSPlus.h>
+extern TinyGPSPlus gps;
+#include "GpsPin.h"
+#endif
 extern bool radio_online;   // true once the host sends CMD_RADIO_STATE=on (Reticulum opened us)
 
 // ---- tunables ---------------------------------------------------------------
@@ -1458,6 +1469,86 @@ void tracker_status_burst() {
 
   tb_canvas.fillScreen(0x0000);
 
+  // ---- the Reticulum mark, dim, BEHIND the pulse (operator, 2026-08-27:
+  // "give the heltec tracker the same logo in the centre" — the T114's
+  // watermark, scaled to this 160x75 field). Drawn FIRST — the furthest
+  // background layer: the noise haze speckles OVER it, the breath glows
+  // over it, bursts fly across it. Geometry traced from the authentic
+  // mark at ring r=60 (see ~/RTNode-2400 TbField.h), scaled to r=34.
+  {
+    const float mk = 34.0f / 60.0f;
+#define TB_MK(v) ((int)lroundf((v) * mk))
+    int cx = TB_CX, cy = TB_CY;
+    uint16_t ring = tb565(46, 62, 58);
+    uint16_t node = tb565(60, 92, 82);
+    // double outer ring + thin inner ring, as the mark has
+    tb_canvas.drawCircle(cx, cy, TB_MK(60), ring);
+    tb_canvas.drawCircle(cx, cy, TB_MK(60) - 1, ring);
+    tb_canvas.drawCircle(cx, cy, TB_MK(54), ring);
+    // nodes (traced): hub pair centre-left, edge-breaker right, corner
+    // node bottom-left, three-dot chain top, three-dot arc bottom
+    // ONE hub dot EXACTLY on the breath-pulse centre (operator, 2026-08-27:
+    // offset hub = crescent moon at pulse-minimum; any companion beside it
+    // = clutter. Pair detail dropped; red's line runs from the hub).
+    int hub_x = cx,              hub_y = cy;
+    int red_x = cx + TB_MK(61),  red_y = cy + TB_MK(-1);
+    int blc_x = cx + TB_MK(-57), blc_y = cy + TB_MK(53);
+    int ta_x = cx + TB_MK(-30), ta_y = cy + TB_MK(-48);
+    int tb_x = cx + TB_MK(-14), tb_y = cy + TB_MK(-34);
+    int tc_x = cx + TB_MK(-44), tc_y = cy + TB_MK(-22);
+    int ba_x = cx + TB_MK(-7),  ba_y = cy + TB_MK(34);
+    int bb_x = cx + TB_MK(12),  bb_y = cy + TB_MK(41);
+    int bc_x = cx + TB_MK(24),  bc_y = cy + TB_MK(29);
+    tb_canvas.drawLine(tc_x, tc_y, ta_x, ta_y, ring);
+    tb_canvas.drawLine(ta_x, ta_y, tb_x, tb_y, ring);
+    tb_canvas.drawLine(tb_x, tb_y, hub_x, hub_y, ring);
+    tb_canvas.drawLine(hub_x, hub_y, red_x, red_y, ring);
+    tb_canvas.drawLine(hub_x, hub_y, blc_x, blc_y, ring);
+    tb_canvas.drawLine(blc_x, blc_y, ba_x, ba_y, ring);
+    tb_canvas.drawLine(ba_x, ba_y, bb_x, bb_y, ring);
+    tb_canvas.drawLine(bb_x, bb_y, bc_x, bc_y, ring);
+    tb_canvas.drawLine(bc_x, bc_y, red_x, red_y, ring);
+    tb_canvas.fillCircle(hub_x, hub_y, TB_MK(8), node);
+    tb_canvas.fillCircle(red_x, red_y, TB_MK(7), node);
+    tb_canvas.fillCircle(blc_x, blc_y, TB_MK(7), node);
+    tb_canvas.fillCircle(ta_x, ta_y, TB_MK(3), node);
+    tb_canvas.fillCircle(tb_x, tb_y, TB_MK(4), node);
+    tb_canvas.fillCircle(tc_x, tc_y, TB_MK(3), node);
+    tb_canvas.fillCircle(ba_x, ba_y, TB_MK(6), node);
+    tb_canvas.fillCircle(bb_x, bb_y, TB_MK(4), node);
+    tb_canvas.fillCircle(bc_x, bc_y, TB_MK(3), node);
+    // the board's flashed ROLE where the mark carries its RNS letters
+    // (operator, 2026-08-27). Read LIVE from op_mode — MODE_TNC is the
+    // transport role — so a reflash between roles tells the truth.
+    // PIL-approved: fixed at cx+5, cy-13 (candidate d — the 36px label
+    // can't scale below font size 1; only its tail grazes the r=34 ring).
+    // role label, brighter again (operator, 2026-08-27 round 2: "a little
+    // brighter... not as bright as the lora wifi lan ble" rows at 238/230/215)
+    // — clearly legible, still short of the interface rows. (operator,
+    // 2026-08-27). Transport = two stacked lines; RNode single line.
+    // Label only once the radio is ONLINE (operator, 2026-08-27: the boot
+    // window showed "RNode" before the stored transport config applied —
+    // "potentially confusing". Until the board is truly serving, the mark
+    // stays unlabelled; the role appears the moment the LORA dot goes
+    // green, and then it is the truth.)
+    if (radio_online) {
+      tb_canvas.setTextWrap(false);
+      tb_canvas.setTextSize(1);
+      tb_canvas.setTextColor(tb565(150, 195, 172));
+      if (op_mode == MODE_TNC) {
+      int lx = cx + 5, ly = cy - 17;
+      tb_canvas.setCursor(lx, ly);
+      tb_canvas.print("Transport");
+      tb_canvas.setCursor(lx + (9 - 4) * 6 / 2, ly + 9);
+      tb_canvas.print("Node");
+    } else {
+      tb_canvas.setCursor(cx + 5, cy - 13);
+      tb_canvas.print("RNode");
+      }
+    }
+#undef TB_MK
+  }
+
   // --- noise floor -> ambient haze, drawn FIRST so everything composites over it ---
   float nf_norm = 0.0f;
   if (noise_floor_sampled) {
@@ -1608,9 +1699,49 @@ void tracker_status_burst() {
         r_ = (uint8_t)(30 + u*(235-30)); g_ = (uint8_t)(200 + u*(170-200)); b_ = (uint8_t)(40*(1.0f-u)); }
       else { float u = (tb_bar_norm - 0.5f) / 0.5f;
         r_ = 235; g_ = (uint8_t)(170 + u*(30-170)); b_ = 0; }
+      // fill anchored to the PHYSICAL antenna (fleet rule, operator
+      // 2026-08-21): the bar grows AWAY from the antenna end as the floor
+      // worsens — bad news retreats from the goal. The 180-deg rotation-3
+      // flip (2026-08-27) moved the antenna to the LOGICAL LEFT, so the
+      // fill anchor swapped sides to keep the physical truth (operator:
+      // "reverse the flow ... so it moves away from the antenna").
       if (fw > 0) tb_canvas.fillRect(0, by, fw, TB_BAR_H, tb565(r_, g_, b_));
     }
   }
+
+  // live frequency, amber, bottom-right above the calibration bar
+  // (operator, 2026-08-21: same treatment as the T114). Read off the
+  // radio state, never hardcoded.
+  {
+    char fbuf[12];
+    snprintf(fbuf, sizeof(fbuf), "%.3f", (double)lora_freq / 1000000.0);
+    tb_canvas.setTextWrap(false);
+    tb_canvas.setTextSize(1);
+    int tw = (int)strlen(fbuf) * 6;
+    tb_canvas.setCursor(TB_W - tw - 3, TB_FIELD_H - 10);
+    tb_canvas.setTextColor(tb565(240, 180, 60));
+    tb_canvas.print(fbuf);
+  }
+
+#if HAS_GPS
+  // GPS map-pin icon, top-right (operator, 2026-08-27: "this icon appears in
+  // the top right corner in RED when GPS is active, GREEN when satellites
+  // connected, disappear if no GPS at all"). Presence = the GNSS is alive and
+  // producing NMEA (charsProcessed only grows when real sentences arrive — a
+  // dead/unpowered module never draws anything). Green needs a FRESH fix
+  // (valid + < 10 s old — the telemetry-fresh-vs-actual-fix trap).
+  if (gps.charsProcessed() > 10) {
+    bool fix = gps.location.isValid() && gps.location.age() < 10000;
+    // blit the painted pin (GpsPin.h), colour = state, 0x0000 = transparent
+    const uint16_t *pin = fix ? gps_pin_green : gps_pin_red;
+    int gx = TB_W - GPS_PIN_W - 2, gy = 1;
+    for (int yy = 0; yy < GPS_PIN_H; yy++)
+      for (int xx = 0; xx < GPS_PIN_W; xx++) {
+        uint16_t c = pin[yy * GPS_PIN_W + xx];
+        if (c) tb_canvas.drawPixel(gx + xx, gy + yy, c);
+      }
+  }
+#endif
 
   display.startWrite();
   display.setAddrWindow(0, 0, TB_W, TB_H);

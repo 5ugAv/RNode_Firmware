@@ -37,6 +37,35 @@ uint8_t serialBuffer[CONFIG_UART_BUFFER_SIZE+1];
     escaped_serial_write((uint8_t)gps.satellites.value());
     escaped_serial_write(gps.location.isValid() ? 0x01 : 0x00);
     serial_write(FEND);
+    // Satellite UTC for the medic clock (Pi 5 RTC is not battery-backed;
+    // the field has no internet). Emitted ONLY when receiver date AND time
+    // are valid and FRESH (< 2 s) — a stale/half-parsed stamp must never
+    // reach the medic, which would rather stay unverified than set a wrong
+    // clock. Raw UTC fields; the medic (Python) does the epoch math.
+    if (gps.date.isValid() && gps.time.isValid()
+        && gps.date.age() < 2000 && gps.time.age() < 2000) {
+      uint16_t yr = gps.date.year();
+      serial_write(FEND); serial_write(CMD_GPS); serial_write(GPS_CMD_UTC);
+      escaped_serial_write((uint8_t)(yr >> 8));
+      escaped_serial_write((uint8_t)(yr & 0xFF));
+      escaped_serial_write((uint8_t)gps.date.month());
+      escaped_serial_write((uint8_t)gps.date.day());
+      escaped_serial_write((uint8_t)gps.time.hour());
+      escaped_serial_write((uint8_t)gps.time.minute());
+      escaped_serial_write((uint8_t)gps.time.second());
+      serial_write(FEND);
+    }
+    // Fix QUALITY as HDOP*100 (uint16). The honest companion to a
+    // position: the medic turns this into a +-metres estimate and can
+    // refuse to PLACE a node from a poor fix. Valid before a 3D lock.
+    if (gps.hdop.isValid()) {
+      uint32_t h = gps.hdop.value();
+      if (h > 65535) h = 65535;
+      serial_write(FEND); serial_write(CMD_GPS); serial_write(GPS_CMD_ACCURACY);
+      escaped_serial_write((uint8_t)(h >> 8));
+      escaped_serial_write((uint8_t)(h & 0xFF));
+      serial_write(FEND);
+    }
     if (gps.location.isValid()) {
       serial_write(FEND); serial_write(CMD_GPS); serial_write(GPS_CMD_LAT);
       val = (int32_t)(gps.location.lat() * 1000000);
@@ -48,6 +77,16 @@ uint8_t serialBuffer[CONFIG_UART_BUFFER_SIZE+1];
       escaped_serial_write(val>>24); escaped_serial_write(val>>16);
       escaped_serial_write(val>>8);  escaped_serial_write(val);
       serial_write(FEND);
+      // Altitude (int16 metres MSL). LoRa is line-of-sight, so node
+      // elevation is real coverage data for placement/SCAN. Only sent
+      // with a location fix (3D); a 2D fix has no trustworthy altitude.
+      if (gps.altitude.isValid()) {
+        int16_t alt_m = (int16_t)(gps.altitude.meters());
+        serial_write(FEND); serial_write(CMD_GPS); serial_write(GPS_CMD_ALT);
+        escaped_serial_write((uint8_t)(alt_m >> 8));
+        escaped_serial_write((uint8_t)(alt_m & 0xFF));
+        serial_write(FEND);
+      }
     }
   }
 #endif

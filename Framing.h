@@ -112,6 +112,9 @@
   #define GPS_CMD_LAT         0x00
   #define GPS_CMD_LNG         0x01
   #define GPS_CMD_STATE       0x02   // [sats, fix_valid] — sent whenever NMEA is parsing
+  #define GPS_CMD_UTC         0x03   // [yr_hi,yr_lo,mon,day,hr,min,sec] UTC — medic clock discipline
+  #define GPS_CMD_ACCURACY    0x04   // [hdop_hi,hdop_lo] uint16 = HDOP*100 — fix quality / +-metres
+  #define GPS_CMD_ALT         0x05   // [alt_hi,alt_lo] int16 metres MSL — node elevation for LoS coverage
   #define ERROR_INITRADIO     0x01
   #define ERROR_TXFAILED      0x02
   #define ERROR_EEPROM_LOCKED 0x03
