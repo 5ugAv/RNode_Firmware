@@ -112,6 +112,22 @@ sx126x::sx126x(uint8_t index, SPIClass* spi, bool tcxo, bool dio2_as_rf_switch, 
 bool sx126x::preInit() {
   pinMode(_ss, OUTPUT);
   digitalWrite(_ss, HIGH);
+
+  // RESET THE RADIO BEFORE PROBING IT.
+  //
+  // preInit() identifies the modem by reading its sync-word registers, but it
+  // never reset the part first. A power cycle resets the SX1262 along with the
+  // MCU, so that read succeeds and the board works. ANY warm MCU reset - the
+  // DTR/RTS pulse a host asserts when it opens the serial port, or esptool's
+  // hard reset - leaves the radio in whatever state the previous session left
+  // it in. If that was sleep, the read returns garbage, modems_installed goes
+  // false, and the radio can never be started again until someone physically
+  // unplugs the board.
+  //
+  // Diagnosed on an EoRa-S3 2026-09-08: the radio came up only ever on the
+  // first connection after a USB replug. An isolated SPI probe read the sync
+  // word 0x1424 reliably - because that probe pulsed this pin first.
+  reset();
   
   // todo: check if this change causes issues on any platforms
   #if MCU_VARIANT == MCU_ESP32
@@ -323,6 +339,29 @@ void sx126x::reset(void) {
     delay(10);
     digitalWrite(_reset, HIGH);
     delay(10);
+
+    // WAIT FOR THE RADIO TO SAY IT IS READY, rather than assuming 10 ms.
+    //
+    // After NRESET is released the SX1262 holds BUSY high until it has booted
+    // into STDBY_RC, and with a TCXO on DIO3 that includes the crystal's
+    // startup time. Ten milliseconds is not always enough - coming back from
+    // a transmit, with the PA having been active, it is frequently not.
+    //
+    // waitOnBusy() cannot cover this: it gives up after 100 ms and then
+    // proceeds ANYWAY (see the break), so the first register read lands while
+    // the part is still booting and returns garbage. preInit() reads that as
+    // "no modem installed", and the radio can never be started again.
+    //
+    // Measured on an EoRa-S3 2026-09-08: 4/4 connections succeeded before a
+    // transmit and 1/4 after one. Waiting here for BUSY to fall, with a
+    // generous ceiling, is what makes it repeatable.
+    if (_busy != -1) {
+      pinMode(_busy, INPUT);
+      unsigned long start = millis();
+      while (digitalRead(_busy) == HIGH && (millis() - start) < 1000) { delay(1); }
+    } else {
+      delay(50);
+    }
   }
 }
 
